@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private const string GitHubRepo = "ltd-islandeditor";
     private const string LatestReleaseApiUrl = "https://api.github.com/repos/cakezara/ltd-islandeditor/releases/latest";
     private const string ReleasesPageUrl = "https://github.com/cakezara/ltd-islandeditor/releases";
+    private const string GameBananaUrl = "https://gamebanana.com/tools/22455";
 
     private readonly Grid _editorRoot;
     private readonly Border _hubPanel;
@@ -52,8 +53,12 @@ public partial class MainWindow : Window
     private readonly Button _hubBrowseMapSavButton;
     private readonly Button _githubLinkButton;
     private readonly Button _gameBananaLinkButton;
+    private readonly Button _hubGameBananaPromptCloseButton;
     private readonly TextBlock _hubFooterText;
     private readonly TextBlock _hubLatestVersionText;
+    private readonly TextBlock _hubGameBananaLikeText;
+    private readonly TextBlock _bottomGameBananaLikeText;
+    private readonly Border _hubGameBananaPrompt;
     private readonly Button _saveMapButton;
     private readonly Button _saveAsMapButton;
     private readonly Button _exitMapSavButton;
@@ -140,6 +145,7 @@ public partial class MainWindow : Window
     private string? _latestReleaseAssetName;
     private readonly Button _addObjectFromCatalogButton;
     private List<ObjectCatalogOption> _allObjectCatalogOptions = [];
+    private bool _hasClickedGameBananaLikeLink;
 
     private sealed class MapEditSnapshot
     {
@@ -185,6 +191,11 @@ public partial class MainWindow : Window
         }
     }
 
+    private sealed class UserPreferences
+    {
+        public bool HasClickedGameBananaLikeLink { get; set; }
+    }
+
     public MainWindow()
     {
         AvaloniaXamlLoader.Load(this);
@@ -196,8 +207,12 @@ public partial class MainWindow : Window
         _hubBrowseMapSavButton = this.FindControl<Button>("HubBrowseMapSavButton")!;
         _githubLinkButton = this.FindControl<Button>("GithubLinkButton")!;
         _gameBananaLinkButton = this.FindControl<Button>("GameBananaLinkButton")!;
+        _hubGameBananaPromptCloseButton = this.FindControl<Button>("HubGameBananaPromptCloseButton")!;
         _hubFooterText = this.FindControl<TextBlock>("HubFooterText")!;
         _hubLatestVersionText = this.FindControl<TextBlock>("HubLatestVersionText")!;
+        _hubGameBananaLikeText = this.FindControl<TextBlock>("HubGameBananaLikeText")!;
+        _bottomGameBananaLikeText = this.FindControl<TextBlock>("BottomGameBananaLikeText")!;
+        _hubGameBananaPrompt = this.FindControl<Border>("HubGameBananaPrompt")!;
         _saveMapButton = this.FindControl<Button>("SaveMapButton")!;
         _saveAsMapButton = this.FindControl<Button>("SaveAsMapButton")!;
         _exitMapSavButton = this.FindControl<Button>("ExitMapSavButton")!;
@@ -247,6 +262,7 @@ public partial class MainWindow : Window
         _paintTileTypeCombo.IsEnabled = false;
         _addObjectFromCatalogButton.IsEnabled = false;
         _versionNumber = ReadVersionNumber();
+        LoadUserPreferences();
         _hubFooterText.Text = $"cakezara - {_versionNumber}";
         _hubLatestVersionText.IsVisible = false;
         Title = $"Tomodachi Island Editor - {_versionNumber}";
@@ -254,7 +270,10 @@ public partial class MainWindow : Window
         _hubBrowseButton.Click += BrowseRootButtonOnClick;
         _hubBrowseMapSavButton.Click += BrowseMapSavButtonOnClick;
         _githubLinkButton.Click += (_, _) => OpenExternalUrl("https://github.com/cakezara/ltd-islandeditor", "GitHub");
-        _gameBananaLinkButton.Click += (_, _) => OpenExternalUrl("https://gamebanana.com/tools/22455", "GameBanana");
+        _gameBananaLinkButton.Click += (_, _) => OpenGameBananaLikeLink();
+        _hubGameBananaPromptCloseButton.Click += HubGameBananaPromptCloseButtonOnClick;
+        _hubGameBananaLikeText.PointerPressed += GameBananaLikeTextOnPointerPressed;
+        _bottomGameBananaLikeText.PointerPressed += GameBananaLikeTextOnPointerPressed;
         _hubLatestVersionText.PointerPressed += HubLatestVersionTextOnPointerPressed;
         _saveMapButton.Click += SaveMapButtonOnClick;
         _saveAsMapButton.Click += SaveAsMapButtonOnClick;
@@ -298,6 +317,34 @@ public partial class MainWindow : Window
         ApplyObjectCatalogFilter();
     }
 
+    private void HubGameBananaPromptCloseButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        _hubGameBananaPrompt.IsVisible = false;
+    }
+
+    private void GameBananaLikeTextOnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        e.Handled = true;
+        OpenGameBananaLikeLink();
+    }
+
+    private void OpenGameBananaLikeLink()
+    {
+        if (!OpenExternalUrl(GameBananaUrl, "GameBanana"))
+        {
+            return;
+        }
+
+        if (_hasClickedGameBananaLikeLink)
+        {
+            return;
+        }
+
+        _hasClickedGameBananaLikeLink = true;
+        _hubGameBananaPrompt.IsVisible = false;
+        SaveUserPreferences();
+    }
+
     private void ApplyWindowIconFromIco()
     {
         var iconUri = new Uri("avares://MapIslandEditor/IE.ico");
@@ -326,6 +373,55 @@ public partial class MainWindow : Window
         catch
         {
             return "dev";
+        }
+    }
+
+    private static string GetUserPreferencesFilePath()
+    {
+        var preferencesDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MapIslandEditor");
+        return Path.Combine(preferencesDir, "preferences.json");
+    }
+
+    private void LoadUserPreferences()
+    {
+        try
+        {
+            var path = GetUserPreferencesFilePath();
+            if (!File.Exists(path))
+            {
+                _hasClickedGameBananaLikeLink = false;
+                return;
+            }
+
+            var json = File.ReadAllText(path);
+            var preferences = JsonSerializer.Deserialize<UserPreferences>(json);
+            _hasClickedGameBananaLikeLink = preferences?.HasClickedGameBananaLikeLink ?? false;
+        }
+        catch
+        {
+            _hasClickedGameBananaLikeLink = false;
+        }
+    }
+
+    private void SaveUserPreferences()
+    {
+        try
+        {
+            var path = GetUserPreferencesFilePath();
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var json = JsonSerializer.Serialize(new UserPreferences
+            {
+                HasClickedGameBananaLikeLink = _hasClickedGameBananaLikeLink
+            });
+            File.WriteAllText(path, json);
+        }
+        catch
+        {
         }
     }
 
@@ -3281,6 +3377,7 @@ public partial class MainWindow : Window
             MinHeight = HubHeight;
             MaxHeight = HubHeight;
             CanResize = false;
+            _hubGameBananaPrompt.IsVisible = !_hasClickedGameBananaLikeLink;
         }
         else
         {
@@ -3291,6 +3388,7 @@ public partial class MainWindow : Window
             MaxWidth = double.PositiveInfinity;
             MaxHeight = double.PositiveInfinity;
             CanResize = true;
+            _hubGameBananaPrompt.IsVisible = false;
         }
     }
 
@@ -3304,7 +3402,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenExternalUrl(string url, string label)
+    private bool OpenExternalUrl(string url, string label)
     {
         try
         {
@@ -3313,10 +3411,12 @@ public partial class MainWindow : Window
                 FileName = url,
                 UseShellExecute = true
             });
+            return true;
         }
         catch (Exception ex)
         {
             _statusText.Text = $"Could not open {label}: {ex.Message}";
+            return false;
         }
     }
 
@@ -3625,17 +3725,21 @@ public partial class MainWindow : Window
 
         foreach (var kv in counts.OrderByDescending(k => k.Value).Take(14))
         {
+            var floorHash = kv.Key;
+            var floorName = ResolveFloorName(floorHash);
             var row = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Spacing = 6
+                Spacing = 6,
+                Cursor = new Cursor(StandardCursorType.Hand)
             };
+            row.PointerPressed += async (_, _) => await CopyFloorHashToClipboardAsync(floorHash, floorName);
 
             row.Children.Add(new Border
             {
                 Width = 12,
                 Height = 12,
-                Background = new SolidColorBrush(GetTileColor(kv.Key)),
+                Background = new SolidColorBrush(GetTileColor(floorHash)),
                 BorderBrush = new SolidColorBrush(Color.Parse("#FF6A6A6A")),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(2),
@@ -3646,11 +3750,24 @@ public partial class MainWindow : Window
             {
                 FontSize = 10,
                 Foreground = new SolidColorBrush(Color.Parse("#FFE6E6E6")),
-                Text = $"{ResolveFloorName(kv.Key)}  ({kv.Key}) x{kv.Value}"
+                Text = $"{floorName}  ({floorHash}) x{kv.Value}"
             });
 
             _floorLegendPanel.Children.Add(row);
         }
+    }
+
+    private async Task CopyFloorHashToClipboardAsync(uint hash, string name)
+    {
+        var top = GetTopLevel(this);
+        if (top?.Clipboard is null)
+        {
+            _statusText.Text = "Clipboard is not available.";
+            return;
+        }
+
+        await top.Clipboard.SetTextAsync(hash.ToString(CultureInfo.InvariantCulture));
+        _statusText.Text = $"Copied {name} tile id: {hash}";
     }
 
     private void BuildTileColorMap(MapProject map)
@@ -3687,6 +3804,8 @@ public partial class MainWindow : Window
 
         switch (hash)
         {
+            case 284683861u:
+                return "Path";
             case 3040829245u:
                 return "Seaside";
             case 2725462509u:
@@ -3695,16 +3814,32 @@ public partial class MainWindow : Window
                 return "Beach";
             case 4283098762u:
                 return "Grass";
-            case 1798261143u:
+            case 1798250199u:
                 return "CherryBlossom";
-            case 2321150077u:
+            case 2321083261u:
                 return "FallenLeaves";
+            case 961076275u:
+                return "Gold";
+            case 532232093u:
+                return "Iron";
+            case 2286024813u:
+                return "Pebble";
+            case 2117934662u:
+                return "RoomInvalid";
             case 2576994675u:
                 return "Soil";
             case 304774435u:
                 return "Sand";
+            case 1207314365u:
+                return "Snow";
+            case 2706712395u:
+                return "Tile";
+            case 1778381553u:
+                return "UGC";
             case 3525010870u:
                 return "Water";
+            case 3944822072u:
+                return "Wood";
         }
 
         if (hash == _waterHash)
