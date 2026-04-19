@@ -25,14 +25,13 @@
         </Grid>
       </Border>
 
-      <Grid Grid.Row="1" Grid.Column="0" Margin="12,12,12,0" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Background="#FF2A2A2A">
+      <Grid Grid.Row="1" Grid.Column="0" Margin="12,12,12,0" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" Background="#FF2A2A2A">
         <TextBlock x:Name="MapInfoText" Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#FFE4E4E4" FontSize="11" />
         <TextBlock Grid.Row="1" Text="Edit Mode" FontWeight="SemiBold" Margin="0,4,0,6" Foreground="#FFF6F6F6" />
         <WrapPanel Grid.Row="2" Orientation="Horizontal">
           <Button x:Name="MoveObjectsButton" Content="Move Objects" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
           <Button x:Name="AddLandButton" Content="Add Tile" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
           <Button x:Name="DeleteLandButton" Content="Delete Tiles" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
-          <Button x:Name="DeleteObjectButton" Content="Delete Selected Obj" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
         </WrapPanel>
         <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
           <TextBlock Text="Add Tile" VerticalAlignment="Center" Foreground="#FFF6F6F6" FontSize="11"/>
@@ -43,7 +42,15 @@
             <StackPanel x:Name="FloorLegendPanel" Spacing="4"/>
           </ScrollViewer>
         </Border>
-        <TextBlock Grid.Row="5" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#FFCACACA" FontSize="10"
+        <Border Grid.Row="5" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8" Margin="0,8,0,0">
+          <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <TextBox x:Name="ObjectSearchText" Watermark="Search objects by name or hash" Background="#FF2A2A2A" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A" />
+            <TextBlock x:Name="ObjectCatalogCountText" Grid.Row="1" Text="0 object types" FontSize="10" Foreground="#FFCACACA" Margin="2,4,0,4"/>
+            <ListBox x:Name="ObjectCatalogList" Grid.Row="2" Background="#FF2F2F2F" BorderBrush="#FF4A4A4A" FontSize="10" Foreground="#FFF0F0F0"/>
+            <Button x:Name="AddObjectFromCatalogButton" Grid.Row="3" Content="Add Selected Object" HorizontalAlignment="Stretch" Padding="10,4" FontSize="11" Margin="0,6,0,0" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          </Grid>
+        </Border>
+        <TextBlock Grid.Row="6" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#FFCACACA" FontSize="10"
                    Text="Controls: Arrow keys move camera | +/- zoom | Delete removes selected object | Ctrl/Cmd+Z undo | Ctrl/Cmd+Shift+Z redo | Mouse wheel zoom | Drag object to move"/>
       </Grid>
 
@@ -65,16 +72,13 @@
                 <local:MapCanvasControl x:Name="MapCanvas"/>
               </Border>
               <Border Grid.Row="2" Grid.Column="1" Margin="10,0,0,0" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8,8,8,6">
-                <Grid RowDefinitions="Auto,Auto,Auto,*">
+                <Grid RowDefinitions="Auto,*">
                   <TextBlock Text="Objects" FontWeight="SemiBold" Foreground="#FFF6F6F6" Margin="2,0,0,6"/>
-                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
-                    <Button x:Name="NudgeLeftButton" Content="◀" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
-                    <Button x:Name="NudgeRightButton" Content="▶" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
-                    <Button x:Name="NudgeUpButton" Content="▲" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
-                    <Button x:Name="NudgeDownButton" Content="▼" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
-                  </StackPanel>
-                  <TextBlock Grid.Row="2" Text="Right-click object for actions" FontSize="10" Foreground="#FFCACACA" Margin="2,0,0,4"/>
-                  <ListBox x:Name="ObjectList" Grid.Row="3" Background="#FF2F2F2F" BorderBrush="#FF4A4A4A" FontSize="10" Foreground="#FFF0F0F0"/>
+                  <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" Margin="0,6,0,0">
+                    <Button x:Name="DeleteObjectButton" Content="Delete" HorizontalAlignment="Stretch" Padding="10,4" FontSize="11" Margin="0,0,0,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                    <TextBlock Grid.Row="1" Text="Shift: range select | Ctrl/Cmd: multi-select" FontSize="10" Foreground="#FFCACACA" Margin="2,0,0,4"/>
+                    <ListBox x:Name="ObjectList" Grid.Row="2" SelectionMode="Multiple" Background="#FF2F2F2F" BorderBrush="#FF4A4A4A" FontSize="10" Foreground="#FFF0F0F0"/>
+                  </Grid>
                 </Grid>
               </Border>
             </Grid>
@@ -90,7 +94,7 @@
               </Border>
             </Grid>
           </TabItem>
-          <TabItem Header="Map.sav">
+          <TabItem x:Name="MapSavTab" Header="Map.sav">
             <Grid Margin="0,6,0,0" RowDefinitions="Auto,Auto,*">
               <TextBlock x:Name="MapSavStatusText" VerticalAlignment="Center" Foreground="#FFE4E4E4" FontSize="11" Margin="0,0,0,8" />
               <TextBox x:Name="MapSavPathText" Grid.Row="1" IsReadOnly="True" FontSize="10" Background="#FF2A2A2A" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A" Padding="8,4" Text="No Map.sav loaded." />

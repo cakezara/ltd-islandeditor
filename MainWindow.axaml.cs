@@ -72,10 +72,6 @@ public partial class MainWindow : Window
     private readonly Button _zoomIn2DButton;
     private readonly Button _zoomOut2DButton;
     private readonly Button _resetView2DButton;
-    private readonly Button _nudgeLeftButton;
-    private readonly Button _nudgeRightButton;
-    private readonly Button _nudgeUpButton;
-    private readonly Button _nudgeDownButton;
     private readonly ComboBox _paintTileTypeCombo;
     private readonly TextBox _rootPathText;
     private readonly TextBlock _mapInfoText;
@@ -85,11 +81,15 @@ public partial class MainWindow : Window
     private readonly TextBlock _mapSavStatusText;
     private readonly TextBlock _mapSavSelectedPathText;
     private readonly TextBlock _mapSavSelectedTypeText;
+    private readonly TextBlock _objectCatalogCountText;
     private readonly StackPanel _floorLegendPanel;
     private readonly ListBox _objectList;
+    private readonly ListBox _objectCatalogList;
     private readonly ListBox _mapSavEntryList;
+    private readonly TextBox _objectSearchText;
     private readonly TextBox _mapSavPathText;
     private readonly TextBox _mapSavValueText;
+    private readonly TabItem _mapSavTab;
     private readonly TabControl _viewerTabs;
     private readonly MapCanvasControl _mapCanvas;
     private readonly Scene3DControl _scene3D;
@@ -108,7 +108,7 @@ public partial class MainWindow : Window
     private readonly BfresReader _bfresReader = new();
     private readonly Stack<MapEditSnapshot> _undoStack = [];
     private readonly Stack<MapEditSnapshot> _redoStack = [];
-    private MapObjectEntry? _objectClipboard;
+    private List<MapObjectEntry> _objectClipboard = [];
     private bool _suppressHistory;
     private bool _tileStrokeUndoCaptured;
     private readonly string _versionNumber;
@@ -138,6 +138,8 @@ public partial class MainWindow : Window
     private string? _latestReleaseTag;
     private string? _latestReleaseAssetUrl;
     private string? _latestReleaseAssetName;
+    private readonly Button _addObjectFromCatalogButton;
+    private List<ObjectCatalogOption> _allObjectCatalogOptions = [];
 
     private sealed class MapEditSnapshot
     {
@@ -168,6 +170,18 @@ public partial class MainWindow : Window
         public override string ToString()
         {
             return $"{Name} ({Hash}) x{Count}";
+        }
+    }
+
+    private sealed class ObjectCatalogOption
+    {
+        public required uint Hash { get; init; }
+        public required string PrimaryName { get; init; }
+        public required string SearchText { get; init; }
+
+        public override string ToString()
+        {
+            return $"{PrimaryName} (0x{Hash:X8})";
         }
     }
 
@@ -202,10 +216,6 @@ public partial class MainWindow : Window
         _zoomIn2DButton = this.FindControl<Button>("ZoomIn2DButton")!;
         _zoomOut2DButton = this.FindControl<Button>("ZoomOut2DButton")!;
         _resetView2DButton = this.FindControl<Button>("ResetView2DButton")!;
-        _nudgeLeftButton = this.FindControl<Button>("NudgeLeftButton")!;
-        _nudgeRightButton = this.FindControl<Button>("NudgeRightButton")!;
-        _nudgeUpButton = this.FindControl<Button>("NudgeUpButton")!;
-        _nudgeDownButton = this.FindControl<Button>("NudgeDownButton")!;
         _paintTileTypeCombo = this.FindControl<ComboBox>("PaintTileTypeCombo")!;
         _rootPathText = this.FindControl<TextBox>("RootPathText")!;
         _mapInfoText = this.FindControl<TextBlock>("MapInfoText")!;
@@ -215,14 +225,19 @@ public partial class MainWindow : Window
         _mapSavStatusText = this.FindControl<TextBlock>("MapSavStatusText")!;
         _mapSavSelectedPathText = this.FindControl<TextBlock>("MapSavSelectedPathText")!;
         _mapSavSelectedTypeText = this.FindControl<TextBlock>("MapSavSelectedTypeText")!;
+        _objectCatalogCountText = this.FindControl<TextBlock>("ObjectCatalogCountText")!;
         _floorLegendPanel = this.FindControl<StackPanel>("FloorLegendPanel")!;
         _objectList = this.FindControl<ListBox>("ObjectList")!;
+        _objectCatalogList = this.FindControl<ListBox>("ObjectCatalogList")!;
         _mapSavEntryList = this.FindControl<ListBox>("MapSavEntryList")!;
+        _objectSearchText = this.FindControl<TextBox>("ObjectSearchText")!;
         _mapSavPathText = this.FindControl<TextBox>("MapSavPathText")!;
         _mapSavValueText = this.FindControl<TextBox>("MapSavValueText")!;
+        _mapSavTab = this.FindControl<TabItem>("MapSavTab")!;
         _viewerTabs = this.FindControl<TabControl>("ViewerTabs")!;
         _mapCanvas = this.FindControl<MapCanvasControl>("MapCanvas")!;
         _scene3D = this.FindControl<Scene3DControl>("Scene3D")!;
+        _addObjectFromCatalogButton = this.FindControl<Button>("AddObjectFromCatalogButton")!;
 
         _rootPathText.Text = "No map files selected.";
         _threeDStatusText.Text = "Open a map, then load 3D models.";
@@ -230,6 +245,7 @@ public partial class MainWindow : Window
         _mapSavStatusText.Text = "Load a Map.sav to edit flags.";
         _applyMapSavValueButton.IsEnabled = false;
         _paintTileTypeCombo.IsEnabled = false;
+        _addObjectFromCatalogButton.IsEnabled = false;
         _versionNumber = ReadVersionNumber();
         _hubFooterText.Text = $"cakezara - {_versionNumber}";
         _hubLatestVersionText.IsVisible = false;
@@ -258,14 +274,13 @@ public partial class MainWindow : Window
         _zoomIn2DButton.Click += (_, _) => _mapCanvas.ZoomBy(1.15);
         _zoomOut2DButton.Click += (_, _) => _mapCanvas.ZoomBy(0.87);
         _resetView2DButton.Click += (_, _) => _mapCanvas.ResetView();
-        _nudgeLeftButton.Click += (_, _) => NudgeSelectedObject(-1, 0);
-        _nudgeRightButton.Click += (_, _) => NudgeSelectedObject(1, 0);
-        _nudgeUpButton.Click += (_, _) => NudgeSelectedObject(0, -1);
-        _nudgeDownButton.Click += (_, _) => NudgeSelectedObject(0, 1);
         _paintTileTypeCombo.SelectionChanged += PaintTileTypeComboOnSelectionChanged;
         _objectList.SelectionChanged += ObjectListOnSelectionChanged;
         _objectList.PointerPressed += ObjectListOnPointerPressed;
         _mapSavEntryList.SelectionChanged += MapSavEntryListOnSelectionChanged;
+        _objectSearchText.TextChanged += ObjectSearchTextOnTextChanged;
+        _objectCatalogList.SelectionChanged += ObjectCatalogListOnSelectionChanged;
+        _addObjectFromCatalogButton.Click += AddObjectFromCatalogButtonOnClick;
         _mapCanvas.ObjectMoved += MapCanvasOnObjectMoved;
         _mapCanvas.ObjectSelected += MapCanvasOnObjectSelected;
         _mapCanvas.TilePainted += MapCanvasOnTilePainted;
@@ -280,6 +295,7 @@ public partial class MainWindow : Window
         ShowHub(true);
         TryAutoLoadMapSav();
         _ = CheckForUpdatesOnBootAsync();
+        ApplyObjectCatalogFilter();
     }
 
     private void ApplyWindowIconFromIco()
@@ -703,6 +719,7 @@ public partial class MainWindow : Window
             TryAutoLoadMapSavFromRoot(_gameRootPath);
             _objectNameLookup = _mapRepository.LoadObjectNameLookup();
             _floorNameLookup = _mapRepository.LoadFloorNameLookup();
+            RebuildObjectCatalog();
             var map = _mapRepository.LoadMap(_gridFilePath, _objectFilePath);
             if (map is null)
             {
@@ -1830,6 +1847,7 @@ public partial class MainWindow : Window
         _mapRepository = new MapRepository(_gameRootPath);
         _objectNameLookup = _mapRepository.LoadObjectNameLookup();
         _floorNameLookup = _mapRepository.LoadFloorNameLookup();
+        RebuildObjectCatalog();
     }
 
     private bool TryBuildMapSavRawPreviewMap(out MapProject map)
@@ -2417,7 +2435,154 @@ public partial class MainWindow : Window
         RefreshFloorLegend(map);
         RefreshPaintTileTypeOptions(map);
         UpdateViewerInfoText(map.Name);
+        UpdateObjectCatalogAddButtonState();
         _statusText.Text = $"Move mode | land hash {_landHash} | water hash {_waterHash}";
+    }
+
+    private void ObjectSearchTextOnTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        ApplyObjectCatalogFilter();
+    }
+
+    private void ObjectCatalogListOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        UpdateObjectCatalogAddButtonState();
+    }
+
+    private void AddObjectFromCatalogButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        AddSelectedCatalogObject();
+    }
+
+    private void RebuildObjectCatalog()
+    {
+        _allObjectCatalogOptions = _objectNameLookup
+            .Where(kv => kv.Value.Count > 0)
+            .Select(kv => new ObjectCatalogOption
+            {
+                Hash = kv.Key,
+                PrimaryName = kv.Value[0],
+                SearchText = BuildObjectCatalogSearchText(kv.Key, kv.Value)
+            })
+            .OrderBy(o => o.PrimaryName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(o => o.Hash)
+            .ToList();
+
+        ApplyObjectCatalogFilter();
+    }
+
+    private static string BuildObjectCatalogSearchText(uint hash, IReadOnlyCollection<string> names)
+    {
+        var allNames = string.Join(' ', names);
+        return $"{allNames} {hash} 0x{hash:X8}";
+    }
+
+    private void ApplyObjectCatalogFilter()
+    {
+        var query = (_objectSearchText.Text ?? string.Empty).Trim();
+        IEnumerable<ObjectCatalogOption> filtered = _allObjectCatalogOptions;
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            filtered = filtered.Where(o =>
+                o.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+            if (TryParseObjectHashQuery(query, out var hashQuery))
+            {
+                filtered = filtered
+                    .Concat(_allObjectCatalogOptions.Where(o => o.Hash == hashQuery))
+                    .GroupBy(o => o.Hash)
+                    .Select(g => g.First());
+            }
+        }
+
+        var selectedHash = (_objectCatalogList.SelectedItem as ObjectCatalogOption)?.Hash;
+        var list = filtered.ToList();
+        _objectCatalogList.ItemsSource = list;
+        _objectCatalogCountText.Text = $"{list.Count} object types";
+
+        if (selectedHash.HasValue)
+        {
+            var reselect = list.FirstOrDefault(o => o.Hash == selectedHash.Value);
+            if (reselect is not null)
+            {
+                _objectCatalogList.SelectedItem = reselect;
+            }
+        }
+
+        UpdateObjectCatalogAddButtonState();
+    }
+
+    private static bool TryParseObjectHashQuery(string value, out uint hash)
+    {
+        hash = 0;
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            return uint.TryParse(trimmed[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out hash);
+        }
+
+        return uint.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out hash);
+    }
+
+    private void UpdateObjectCatalogAddButtonState()
+    {
+        _addObjectFromCatalogButton.IsEnabled = _currentMap is not null && _objectCatalogList.SelectedItem is ObjectCatalogOption;
+    }
+
+    private void AddSelectedCatalogObject()
+    {
+        if (_currentMap is null)
+        {
+            _statusText.Text = "Load a map first.";
+            return;
+        }
+
+        if (_objectCatalogList.SelectedItem is not ObjectCatalogOption selected)
+        {
+            _statusText.Text = "Select an object from search first.";
+            return;
+        }
+
+        if (!_suppressHistory)
+        {
+            PushUndoSnapshot(CaptureSnapshot(_currentMap));
+        }
+
+        var x = _currentMap.Width / 2;
+        var y = _currentMap.Height / 2;
+        if (_mapCanvas.TryGetGridAtLastPointer(out var cursorX, out var cursorY))
+        {
+            x = cursorX;
+            y = cursorY;
+        }
+        else
+        {
+            var selectedIndex = GetSelectedObjectIndex();
+            if (selectedIndex >= 0 && selectedIndex < _currentMap.Objects.Count)
+            {
+                x = _currentMap.Objects[selectedIndex].GridPosX;
+                y = _currentMap.Objects[selectedIndex].GridPosY;
+            }
+        }
+
+        x = Math.Clamp(x, 0, _currentMap.Width - 1);
+        y = Math.Clamp(y, 0, _currentMap.Height - 1);
+
+        var added = new MapObjectEntry
+        {
+            Id = BuildNextObjectId(_currentMap),
+            Hash = selected.Hash,
+            GridPosX = x,
+            GridPosY = y,
+            RotY = 0f
+        };
+
+        _currentMap.Objects.Add(added);
+        var addedIndex = _currentMap.Objects.Count - 1;
+        RefreshObjectList(_currentMap, addedIndex);
+        _mapCanvas.InvalidateVisual();
+        _statusText.Text = $"Added {selected.PrimaryName} (0x{selected.Hash:X8}) at ({x},{y}).";
     }
 
     private void ObjectListOnSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -2852,8 +3017,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var index = _objectList.SelectedIndex;
-        if (index < 0 || index >= _currentMap.Objects.Count)
+        var indices = GetSelectedObjectIndices(_currentMap);
+        if (indices.Count == 0)
         {
             _statusText.Text = "Select an object first.";
             return;
@@ -2864,12 +3029,19 @@ public partial class MainWindow : Window
             PushUndoSnapshot(CaptureSnapshot(_currentMap));
         }
 
-        var removed = _currentMap.Objects[index];
-        _currentMap.Objects.RemoveAt(index);
+        var removedIds = new List<string>();
+        foreach (var index in indices.OrderByDescending(i => i))
+        {
+            removedIds.Add(_currentMap.Objects[index].Id);
+            _currentMap.Objects.RemoveAt(index);
+        }
+
         _mapCanvas.InvalidateVisual();
-        var nextIndex = Math.Min(index, _currentMap.Objects.Count - 1);
+        var nextIndex = _currentMap.Objects.Count > 0 ? Math.Min(indices.Min(), _currentMap.Objects.Count - 1) : -1;
         RefreshObjectList(_currentMap, nextIndex);
-        _statusText.Text = $"Deleted {removed.Id} at ({removed.GridPosX},{removed.GridPosY}).";
+        _statusText.Text = removedIds.Count == 1
+            ? $"Deleted {removedIds[0]}."
+            : $"Deleted {removedIds.Count} objects.";
     }
 
     private void CopySelectedObject()
@@ -2879,15 +3051,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        var index = GetSelectedObjectIndex();
-        if (index < 0 || index >= _currentMap.Objects.Count)
+        var indices = GetSelectedObjectIndices(_currentMap);
+        if (indices.Count == 0)
         {
             _statusText.Text = "Select an object first.";
             return;
         }
 
-        _objectClipboard = CloneObject(_currentMap.Objects[index]);
-        _statusText.Text = $"Copied {_currentMap.Objects[index].Id}.";
+        _objectClipboard = indices
+            .Select(i => CloneObject(_currentMap.Objects[i]))
+            .ToList();
+        _statusText.Text = _objectClipboard.Count == 1
+            ? $"Copied {_objectClipboard[0].Id}."
+            : $"Copied {_objectClipboard.Count} objects.";
     }
 
     private void CutSelectedObject()
@@ -2897,14 +3073,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        var index = GetSelectedObjectIndex();
-        if (index < 0 || index >= _currentMap.Objects.Count)
+        var indices = GetSelectedObjectIndices(_currentMap);
+        if (indices.Count == 0)
         {
             _statusText.Text = "Select an object first.";
             return;
         }
 
-        _objectClipboard = CloneObject(_currentMap.Objects[index]);
+        _objectClipboard = indices
+            .Select(i => CloneObject(_currentMap.Objects[i]))
+            .ToList();
         DeleteSelectedObject();
     }
 
@@ -2915,7 +3093,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_objectClipboard is null)
+        if (_objectClipboard.Count == 0)
         {
             _statusText.Text = "Nothing to paste.";
             return;
@@ -2926,85 +3104,96 @@ public partial class MainWindow : Window
             PushUndoSnapshot(CaptureSnapshot(_currentMap));
         }
 
-        var target = CloneObject(_objectClipboard);
-        target.Id = BuildNextObjectId(_currentMap);
-
+        var sourceMinX = _objectClipboard.Min(o => o.GridPosX);
+        var sourceMinY = _objectClipboard.Min(o => o.GridPosY);
+        var anchorX = sourceMinX + 1;
+        var anchorY = sourceMinY + 1;
         if (_mapCanvas.TryGetGridAtLastPointer(out var cursorX, out var cursorY))
         {
-            target.GridPosX = cursorX;
-            target.GridPosY = cursorY;
+            anchorX = cursorX;
+            anchorY = cursorY;
         }
-        else if (_currentMap.Objects.Count > 0)
+        else
         {
-            var baseIndex = GetSelectedObjectIndex();
-            if (baseIndex >= 0 && baseIndex < _currentMap.Objects.Count)
+            var selectedIndices = GetSelectedObjectIndices(_currentMap);
+            if (selectedIndices.Count > 0)
             {
-                target.GridPosX = _currentMap.Objects[baseIndex].GridPosX;
-                target.GridPosY = _currentMap.Objects[baseIndex].GridPosY;
+                var first = _currentMap.Objects[selectedIndices[0]];
+                anchorX = first.GridPosX + 1;
+                anchorY = first.GridPosY + 1;
             }
-            target.GridPosX = Math.Clamp(target.GridPosX + 1, 0, _currentMap.Width - 1);
-            target.GridPosY = Math.Clamp(target.GridPosY + 1, 0, _currentMap.Height - 1);
         }
 
-        target.GridPosX = Math.Clamp(target.GridPosX, 0, _currentMap.Width - 1);
-        target.GridPosY = Math.Clamp(target.GridPosY, 0, _currentMap.Height - 1);
+        var addedIndices = new List<int>();
+        foreach (var source in _objectClipboard)
+        {
+            var target = CloneObject(source);
+            target.Id = BuildNextObjectId(_currentMap);
+            target.GridPosX = Math.Clamp(anchorX + (source.GridPosX - sourceMinX), 0, _currentMap.Width - 1);
+            target.GridPosY = Math.Clamp(anchorY + (source.GridPosY - sourceMinY), 0, _currentMap.Height - 1);
+            _currentMap.Objects.Add(target);
+            addedIndices.Add(_currentMap.Objects.Count - 1);
+        }
 
-        _currentMap.Objects.Add(target);
-        var selectedIndex = _currentMap.Objects.Count - 1;
-        RefreshObjectList(_currentMap, selectedIndex);
+        RefreshObjectList(_currentMap, addedIndices.Count > 0 ? addedIndices[0] : -1);
+        _objectList.SelectedItems.Clear();
+        var rows = (_objectList.ItemsSource as IEnumerable<object>)?.ToList() ?? [];
+        foreach (var idx in addedIndices.Where(i => i >= 0 && i < rows.Count))
+        {
+            _objectList.SelectedItems.Add(rows[idx]);
+        }
+        _mapCanvas.SelectedObjectIndex = addedIndices.Count > 0 ? addedIndices[0] : -1;
         _mapCanvas.InvalidateVisual();
-        _statusText.Text = $"Pasted {target.Id} at ({target.GridPosX},{target.GridPosY}).";
-    }
-
-    private void NudgeSelectedObject(int dx, int dy)
-    {
-        if (_currentMap is null)
-        {
-            return;
-        }
-
-        var index = GetSelectedObjectIndex();
-        if (index < 0 || index >= _currentMap.Objects.Count)
-        {
-            _statusText.Text = "Select an object first.";
-            return;
-        }
-
-        var obj = _currentMap.Objects[index];
-        var newX = Math.Clamp(obj.GridPosX + dx, 0, _currentMap.Width - 1);
-        var newY = Math.Clamp(obj.GridPosY + dy, 0, _currentMap.Height - 1);
-        if (newX == obj.GridPosX && newY == obj.GridPosY)
-        {
-            return;
-        }
-
-        if (!_suppressHistory)
-        {
-            PushUndoSnapshot(CreateSnapshotWithObjectAt(_currentMap, index, obj.GridPosX, obj.GridPosY));
-        }
-
-        obj.GridPosX = newX;
-        obj.GridPosY = newY;
-        RefreshObjectList(_currentMap, index);
-        _mapCanvas.InvalidateVisual();
-        _statusText.Text = $"Moved {obj.Id} to ({newX},{newY}).";
+        _statusText.Text = _objectClipboard.Count == 1
+            ? $"Pasted {_objectClipboard[0].Id}."
+            : $"Pasted {_objectClipboard.Count} objects.";
     }
 
     private int GetSelectedObjectIndex()
     {
-        var index = _objectList.SelectedIndex;
         if (_currentMap is null)
         {
             return -1;
         }
 
-        if (index >= 0 && index < _currentMap.Objects.Count)
+        var indices = GetSelectedObjectIndices(_currentMap);
+        if (indices.Count > 0)
         {
-            return index;
+            return indices[0];
         }
 
-        index = _mapCanvas.SelectedObjectIndex;
+        var index = _mapCanvas.SelectedObjectIndex;
         return index >= 0 && index < _currentMap.Objects.Count ? index : -1;
+    }
+
+    private List<int> GetSelectedObjectIndices(MapProject map)
+    {
+        var selected = new List<int>();
+        var selectedItems = _objectList.SelectedItems;
+        if (selectedItems is not null)
+        {
+            var rowToIndex = ((_objectList.ItemsSource as IEnumerable<object>) ?? [])
+                .Select((row, index) => new { row, index })
+                .ToDictionary(x => x.row, x => x.index);
+            foreach (var item in selectedItems)
+            {
+                if (item is not null && rowToIndex.TryGetValue(item, out var idx) && idx >= 0 && idx < map.Objects.Count)
+                {
+                    selected.Add(idx);
+                }
+            }
+        }
+
+        if (selected.Count == 0)
+        {
+            var single = _objectList.SelectedIndex;
+            if (single >= 0 && single < map.Objects.Count)
+            {
+                selected.Add(single);
+            }
+        }
+
+        return selected.Distinct().OrderBy(i => i).ToList();
     }
 
     private static string BuildNextObjectId(MapProject map)
@@ -3108,6 +3297,11 @@ public partial class MainWindow : Window
     private void UpdateMapSavToolbarState()
     {
         _exitMapSavButton.IsEnabled = true;
+        _mapSavTab.IsVisible = _mapSavModeActive;
+        if (!_mapSavModeActive && _viewerTabs.SelectedIndex == 2)
+        {
+            _viewerTabs.SelectedIndex = 0;
+        }
     }
 
     private void OpenExternalUrl(string url, string label)
