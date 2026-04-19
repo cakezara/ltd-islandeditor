@@ -1,0 +1,155 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:MapIslandEditor"
+        x:Class="MapIslandEditor.MainWindow"
+        Title="Tomodachi Island Editor"
+        Width="1450"
+        Height="900"
+        MinWidth="1150"
+        MinHeight="720"
+        Background="#FF2A2A2A">
+
+  <Grid>
+    <Grid x:Name="EditorRoot" IsVisible="False" RowDefinitions="44,*,Auto" ColumnDefinitions="380,*">
+      <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#FF3D3D3D" Padding="10,6" BorderThickness="0,0,0,1" BorderBrush="#FF4A4A4A">
+        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*" VerticalAlignment="Center" RowDefinitions="*">
+          <Button x:Name="ExitMapSavButton" Content="Exit" Grid.Column="0" Padding="8,3" FontSize="11" Background="#FF4A4A4A" Foreground="#FFF0F0F0" BorderBrush="#FFFFB30F"/>
+          <Button x:Name="SaveMapButton" Content="Save" Grid.Column="1" Padding="8,3" FontSize="11" Margin="4,0,0,0" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <Button x:Name="SaveAsMapButton" Content="Save As" Grid.Column="2" Padding="8,3" FontSize="11" Margin="4,0,0,0" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <Button x:Name="UndoButton" Content="Undo" Grid.Column="3" Padding="8,3" FontSize="11" Margin="4,0,0,0" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <Button x:Name="RedoButton" Content="Redo" Grid.Column="4" Padding="8,3" FontSize="11" Margin="4,0,0,0" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <StackPanel Grid.Column="5" IsVisible="False" HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+            <TextBlock Text="Map Files:" VerticalAlignment="Center" Foreground="#FFEAEAEA" FontSize="11"/>
+            <TextBox x:Name="RootPathText" IsReadOnly="True" VerticalContentAlignment="Center" Width="300" Padding="8,3" FontSize="10" Background="#FF2A2A2A" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Grid Grid.Row="1" Grid.Column="0" Margin="12,12,12,0" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Background="#FF2A2A2A">
+        <TextBlock x:Name="MapInfoText" Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#FFE4E4E4" FontSize="11" />
+        <TextBlock Grid.Row="1" Text="Edit Mode" FontWeight="SemiBold" Margin="0,4,0,6" Foreground="#FFF6F6F6" />
+        <WrapPanel Grid.Row="2" Orientation="Horizontal">
+          <Button x:Name="MoveObjectsButton" Content="Move Objects" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <Button x:Name="AddLandButton" Content="Add Tile" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <Button x:Name="DeleteLandButton" Content="Delete Tiles" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <Button x:Name="DeleteObjectButton" Content="Delete Selected Obj" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+        </WrapPanel>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
+          <TextBlock Text="Add Tile" VerticalAlignment="Center" Foreground="#FFF6F6F6" FontSize="11"/>
+          <ComboBox x:Name="PaintTileTypeCombo" Width="230" FontSize="10" Background="#FF2F2F2F" Foreground="#FFF0F0F0" BorderBrush="#FF4A4A4A"/>
+        </StackPanel>
+        <Border Grid.Row="4" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8,8,8,6" Margin="0,8,0,0">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="280">
+            <StackPanel x:Name="FloorLegendPanel" Spacing="4"/>
+          </ScrollViewer>
+        </Border>
+        <TextBlock Grid.Row="5" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#FFCACACA" FontSize="10"
+                   Text="Controls: Arrow keys move camera | +/- zoom | Delete removes selected object | Ctrl/Cmd+Z undo | Ctrl/Cmd+Shift+Z redo | Mouse wheel zoom | Drag object to move"/>
+      </Grid>
+
+      <Grid Grid.Row="1" Grid.Column="1" Margin="0,12,0,0" Background="#FF2A2A2A">
+        <TabControl x:Name="ViewerTabs" SelectedIndex="0">
+          <TabItem Header="2D">
+            <Grid Margin="0,6,0,0" RowDefinitions="Auto,Auto,*" ColumnDefinitions="*,270">
+              <TextBlock x:Name="ViewerInfoText" Grid.ColumnSpan="2" Text="Map.sav" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10" Foreground="#FFF6F6F6" />
+              <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="4" Margin="0,0,0,8">
+                <Button x:Name="PanLeft2DButton" Content="◀" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                <Button x:Name="PanRight2DButton" Content="▶" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                <Button x:Name="PanUp2DButton" Content="▲" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                <Button x:Name="PanDown2DButton" Content="▼" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                <Button x:Name="ZoomIn2DButton" Content="+" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                <Button x:Name="ZoomOut2DButton" Content="-" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                <Button x:Name="ResetView2DButton" Content="Reset View" Padding="8,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+              </StackPanel>
+              <Border Grid.Row="2" Grid.Column="0" ClipToBounds="True" Background="#FF373737" BorderBrush="#FF4A4A4A" BorderThickness="1">
+                <local:MapCanvasControl x:Name="MapCanvas"/>
+              </Border>
+              <Border Grid.Row="2" Grid.Column="1" Margin="10,0,0,0" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8,8,8,6">
+                <Grid RowDefinitions="Auto,Auto,Auto,*">
+                  <TextBlock Text="Objects" FontWeight="SemiBold" Foreground="#FFF6F6F6" Margin="2,0,0,6"/>
+                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6">
+                    <Button x:Name="NudgeLeftButton" Content="◀" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                    <Button x:Name="NudgeRightButton" Content="▶" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                    <Button x:Name="NudgeUpButton" Content="▲" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                    <Button x:Name="NudgeDownButton" Content="▼" Padding="6,2" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                  </StackPanel>
+                  <TextBlock Grid.Row="2" Text="Right-click object for actions" FontSize="10" Foreground="#FFCACACA" Margin="2,0,0,4"/>
+                  <ListBox x:Name="ObjectList" Grid.Row="3" Background="#FF2F2F2F" BorderBrush="#FF4A4A4A" FontSize="10" Foreground="#FFF0F0F0"/>
+                </Grid>
+              </Border>
+            </Grid>
+          </TabItem>
+          <TabItem Header="3D" IsEnabled="False" Opacity="0.55">
+            <Grid Margin="0,6,0,0" RowDefinitions="Auto,*">
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+                <Button x:Name="Load3DButton" Content="Load 3D Models" Padding="12,6" FontSize="12" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                <TextBlock x:Name="ThreeDStatusText" VerticalAlignment="Center" Foreground="#FFE4E4E4" FontSize="11" />
+              </StackPanel>
+              <Border Grid.Row="1" Background="#FF373737" BorderBrush="#FF4A4A4A" BorderThickness="1">
+                <local:Scene3DControl x:Name="Scene3D"/>
+              </Border>
+            </Grid>
+          </TabItem>
+          <TabItem Header="Map.sav">
+            <Grid Margin="0,6,0,0" RowDefinitions="Auto,Auto,*">
+              <TextBlock x:Name="MapSavStatusText" VerticalAlignment="Center" Foreground="#FFE4E4E4" FontSize="11" Margin="0,0,0,8" />
+              <TextBox x:Name="MapSavPathText" Grid.Row="1" IsReadOnly="True" FontSize="10" Background="#FF2A2A2A" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A" Padding="8,4" Text="No Map.sav loaded." />
+              <Grid Grid.Row="2" Margin="0,8,0,0" ColumnDefinitions="2*,10,*">
+                <Border Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8">
+                  <ListBox x:Name="MapSavEntryList" Background="#FF2F2F2F" BorderBrush="#FF4A4A4A" Foreground="#FFF0F0F0" FontSize="10"/>
+                </Border>
+                <Border Grid.Column="2" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Selected Path" Foreground="#FFF6F6F6" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="MapSavSelectedPathText" Text="-" TextWrapping="Wrap" Foreground="#FFE4E4E4" FontSize="10"/>
+                    <TextBlock x:Name="MapSavSelectedTypeText" Text="Type: -" Foreground="#FFD8D8D8" FontSize="10"/>
+                    <TextBlock Text="Value" Foreground="#FFF6F6F6" Margin="0,6,0,0"/>
+                    <TextBox x:Name="MapSavValueText" Background="#FF2A2A2A" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A"/>
+                    <Button x:Name="ApplyMapSavValueButton" Content="Apply Value" Padding="10,5" FontSize="11" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+            </Grid>
+          </TabItem>
+        </TabControl>
+      </Grid>
+
+      <Border Grid.Row="2" Grid.ColumnSpan="2" Background="#FF3D3D3D" Padding="12,8" BorderThickness="0,1,0,0" BorderBrush="#FF4A4A4A">
+        <TextBlock x:Name="StatusText" Foreground="#FFEAEAEA" FontSize="12" />
+      </Border>
+    </Grid>
+
+    <Border x:Name="HubPanel" Background="#FF2A2A2A" IsVisible="True" Padding="30">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" MaxWidth="860" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <TextBlock Text="Tomodachi Island Editor" HorizontalAlignment="Center" FontSize="46" FontWeight="Bold" Foreground="#FFF6F6F6">
+          <TextBlock.Effect>
+            <DropShadowEffect Color="#CC000000" BlurRadius="10" OffsetX="2" OffsetY="2"/>
+          </TextBlock.Effect>
+        </TextBlock>
+        <Border Grid.Row="2" Margin="0,24,0,0" Background="#FF323232" BorderBrush="#FFFFB30F" BorderThickness="2" CornerRadius="8" Padding="18,12">
+          <StackPanel Orientation="Vertical" Spacing="10">
+            <TextBlock Text="Select one of the options below to start editing" FontSize="14" Foreground="#FFEAEAEA" HorizontalAlignment="Center"/>
+            <Button x:Name="HubBrowseButton" Content="Open MapFiles" HorizontalAlignment="Center" Padding="20,8" FontSize="14" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+            <Button x:Name="HubBrowseMapSavButton" Content="Open Map.sav" HorizontalAlignment="Center" Padding="20,8" FontSize="13" Background="#FF4A4A4A" Foreground="#FFF0F0F0" BorderBrush="#FFFFB30F"/>
+          </StackPanel>
+        </Border>
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="14" Margin="0,24,0,0">
+          <Button x:Name="GithubLinkButton" Width="54" Height="54" Background="#FF323232" BorderBrush="#FFFFB30F" BorderThickness="2">
+            <Viewbox Width="24" Height="24">
+              <Path Fill="#FFFFB30F" Data="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+            </Viewbox>
+          </Button>
+          <Button x:Name="GameBananaLinkButton" Width="54" Height="54" Background="#FF323232" BorderBrush="#FFFFB30F" BorderThickness="2">
+            <Viewbox Width="24" Height="24">
+              <Path Fill="#FFFFB30F" Data="M14.249 0v3h1.5V1.5h1.505V3h-1.505V7.5h1.5V4.5h3.002v-1.5h-1.505V0Zm6.002 4.498v1.5h1.5V4.501Zm1.5 1.5v10.503h1.5V5.998Zm0 10.503h-1.5V19.5h1.5zm-1.5 2.998h-1.505v1.5h1.5zm-1.5 1.5h-3.002v1.5h3.001zm-3.002 1.5H6.75V24h9zm-8.999 0V21h-3v1.5zm-3-1.5v-1.497H2.248v1.5zm-1.501-1.497v-2.997H9.75v-1.5H.748v4.497zm7.502-4.497h2.997v-1.5H9.751Zm2.997-1.5h1.5v-1.501h-1.5zm1.5-1.501h1.501V7.506h-1.5z"/>
+            </Viewbox>
+          </Button>
+        </StackPanel>
+        <StackPanel Grid.Row="6" HorizontalAlignment="Center" Margin="0,16,0,0" Spacing="2">
+          <TextBlock x:Name="HubFooterText" HorizontalAlignment="Center" Foreground="#FF8A8A8A" FontSize="12" Text="cakezara - version"/>
+          <TextBlock x:Name="HubLatestVersionText" HorizontalAlignment="Center" Foreground="#FFFFB30F" FontSize="12" TextDecorations="Underline" IsVisible="False" Cursor="Hand"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
