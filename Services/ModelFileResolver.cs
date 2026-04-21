@@ -6,7 +6,9 @@ public sealed class ModelFileResolver
 
     public ModelFileResolver(string rootPath)
     {
-        var modelDir = Path.Combine(rootPath, "Model");
+        var modelDir = Directory.Exists(Path.Combine(rootPath, "Model"))
+            ? Path.Combine(rootPath, "Model")
+            : rootPath;
         if (!Directory.Exists(modelDir))
         {
             _modelPaths = [];

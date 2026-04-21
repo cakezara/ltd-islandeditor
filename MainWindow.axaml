@@ -25,24 +25,46 @@
         </Grid>
       </Border>
 
-      <Grid Grid.Row="1" Grid.Column="0" Margin="12,12,12,0" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" Background="#FF2A2A2A">
+      <Grid Grid.Row="1" Grid.Column="0" Margin="12,12,12,0" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" Background="#FF2A2A2A">
         <TextBlock x:Name="MapInfoText" Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#FFE4E4E4" FontSize="11" />
         <TextBlock Grid.Row="1" Text="Edit Mode" FontWeight="SemiBold" Margin="0,4,0,6" Foreground="#FFF6F6F6" />
         <WrapPanel Grid.Row="2" Orientation="Horizontal">
           <Button x:Name="MoveObjectsButton" Content="Move Objects" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
           <Button x:Name="AddLandButton" Content="Add Tile" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
           <Button x:Name="DeleteLandButton" Content="Delete Tiles" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <Button x:Name="DebugImportTilesButton" Content="Image Import" IsVisible="False" Padding="10,4" FontSize="10" Margin="0,0,6,6" Background="#FF4A4A4A" Foreground="#FFF0F0F0" BorderBrush="#FFFFB30F"/>
         </WrapPanel>
         <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
           <TextBlock Text="Add Tile" VerticalAlignment="Center" Foreground="#FFF6F6F6" FontSize="11"/>
           <ComboBox x:Name="PaintTileTypeCombo" Width="230" FontSize="10" Background="#FF2F2F2F" Foreground="#FFF0F0F0" BorderBrush="#FF4A4A4A"/>
         </StackPanel>
-        <Border Grid.Row="4" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8,8,8,6" Margin="0,8,0,0">
+        <Border x:Name="DebugImageImportPanel" Grid.Row="4" IsVisible="False" MaxHeight="320" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8,8,8,6" Margin="0,8,0,0">
+          <Grid RowDefinitions="Auto,Auto,Auto,*">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Button x:Name="DebugChooseImageButton" Content="Choose Image" Padding="10,4" FontSize="10" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+              <TextBlock x:Name="DebugImagePathText" Text="No image selected." MaxWidth="180" VerticalAlignment="Center" Foreground="#FFE0E0E0" FontSize="10" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+            <WrapPanel Grid.Row="1" Orientation="Horizontal" ItemHeight="28" Margin="0,6,0,0">
+              <Button x:Name="DebugSelectAreaButton" Content="Select Area" Padding="10,4" FontSize="10" Background="#FF4A4A4A" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A"/>
+              <TextBlock x:Name="DebugAreaText" Text="Area: drag on map" MaxWidth="170" VerticalAlignment="Center" Foreground="#FFCACACA" FontSize="10" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Text="Sizing" VerticalAlignment="Center" Foreground="#FFF6F6F6" FontSize="10"/>
+              <ComboBox x:Name="DebugImageSizingCombo" Width="150" FontSize="10" Background="#FF2F2F2F" Foreground="#FFF0F0F0" BorderBrush="#FF4A4A4A"/>
+              <Button x:Name="DebugApplyImageImportButton" Content="Apply (Enter)" Padding="10,4" FontSize="10" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+              <Button x:Name="DebugInsertImageImportButton" Content="Insert" Padding="10,4" FontSize="10" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+              <Button x:Name="DebugCloseImageImportButton" Content="Close" Padding="10,4" FontSize="10" Background="#FF4A4A4A" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A"/>
+            </WrapPanel>
+            <TextBlock x:Name="DebugImageSummaryText" Grid.Row="2" Margin="0,6,0,0" Foreground="#FFCACACA" FontSize="10" Text="Load an image to preview and edit tile mappings."/>
+            <ScrollViewer Grid.Row="3" Margin="0,6,0,0" VerticalScrollBarVisibility="Auto" MaxHeight="170">
+              <StackPanel x:Name="DebugTileMappingPanel" Spacing="4"/>
+            </ScrollViewer>
+          </Grid>
+        </Border>
+        <Border Grid.Row="5" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8,8,8,6" Margin="0,8,0,0">
           <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="280">
             <StackPanel x:Name="FloorLegendPanel" Spacing="4"/>
           </ScrollViewer>
         </Border>
-        <Border Grid.Row="5" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8" Margin="0,8,0,0">
+        <Border Grid.Row="6" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8" Margin="0,8,0,0">
           <Grid RowDefinitions="Auto,Auto,*,Auto">
             <TextBox x:Name="ObjectSearchText" Watermark="Search objects by name or hash" Background="#FF2A2A2A" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A" />
             <TextBlock x:Name="ObjectCatalogCountText" Grid.Row="1" Text="0 object types" FontSize="10" Foreground="#FFCACACA" Margin="2,4,0,4"/>
@@ -50,7 +72,7 @@
             <Button x:Name="AddObjectFromCatalogButton" Grid.Row="3" Content="Add Selected Object" HorizontalAlignment="Stretch" Padding="10,4" FontSize="11" Margin="0,6,0,0" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
           </Grid>
         </Border>
-        <TextBlock Grid.Row="6" Margin="0,4,0,10" TextWrapping="Wrap" Foreground="#FFCACACA" FontSize="10"
+        <TextBlock Grid.Row="7" Margin="0,4,0,10" TextWrapping="Wrap" Foreground="#FFCACACA" FontSize="10"
                    Text="Controls: Arrow keys move camera | +/- zoom | Delete removes selected object | Ctrl/Cmd+Z undo | Ctrl/Cmd+Shift+Z redo | Mouse wheel zoom | Drag object to move | Shift+drag in Add/Delete Tile draws a box selection"/>
       </Grid>
 
@@ -83,7 +105,7 @@
               </Border>
             </Grid>
           </TabItem>
-          <TabItem Header="3D" IsEnabled="False" Opacity="0.55">
+          <TabItem x:Name="ThreeDTab" Header="3D" IsEnabled="False" Opacity="0.55">
             <Grid Margin="0,6,0,0" RowDefinitions="Auto,*">
               <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
                 <Button x:Name="Load3DButton" Content="Load 3D Models" Padding="12,6" FontSize="12" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
@@ -136,7 +158,7 @@
           </TextBlock>
           <Border Grid.Row="2" Margin="0,24,0,0" Background="#FF323232" BorderBrush="#FFFFB30F" BorderThickness="2" CornerRadius="8" Padding="18,12">
             <StackPanel Orientation="Vertical" Spacing="10">
-              <TextBlock Text="Select one of the options below to start editing" FontSize="14" Foreground="#FFEAEAEA" HorizontalAlignment="Center"/>
+              <TextBlock x:Name="HubModeText" Text="Select one of the options below to start editing" FontSize="14" Foreground="#FFEAEAEA" HorizontalAlignment="Center"/>
               <Button x:Name="HubBrowseButton" Content="Open MapFiles" HorizontalAlignment="Center" Padding="20,8" FontSize="14" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
               <Button x:Name="HubBrowseMapSavButton" Content="Open Map.sav" HorizontalAlignment="Center" Padding="20,8" FontSize="13" Background="#FF4A4A4A" Foreground="#FFF0F0F0" BorderBrush="#FFFFB30F"/>
             </StackPanel>
@@ -162,6 +184,12 @@
           <Grid ColumnDefinitions="Auto,Auto" VerticalAlignment="Center">
             <TextBlock x:Name="HubGameBananaLikeText" Text="Consider giving a like on gamebanana!" Foreground="#FFFFB30F" FontSize="12" TextDecorations="Underline" Cursor="Hand" VerticalAlignment="Center"/>
             <Button x:Name="HubGameBananaPromptCloseButton" Grid.Column="1" Content="×" Width="18" Height="18" Margin="8,0,0,0" Padding="0" FontSize="11" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FF3D3D3D" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A"/>
+          </Grid>
+        </Border>
+        <Border x:Name="HubDebugPrompt" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="#FF323232" BorderBrush="#FFFFB30F" BorderThickness="1" CornerRadius="6" Padding="10,7" Margin="20,0,0,0" IsVisible="False">
+          <Grid ColumnDefinitions="Auto,Auto" VerticalAlignment="Center">
+            <TextBlock x:Name="HubDebugPromptText" Text="Debug Mode: ImageImporter + 3DView" Foreground="#FFFFB30F" FontSize="12" VerticalAlignment="Center"/>
+            <Button x:Name="HubDebugPromptCloseButton" Grid.Column="1" Content="×" Width="18" Height="18" Margin="8,0,0,0" Padding="0" FontSize="11" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FF3D3D3D" Foreground="#FFF0F0F0" BorderBrush="#FF5A5A5A"/>
           </Grid>
         </Border>
       </Grid>

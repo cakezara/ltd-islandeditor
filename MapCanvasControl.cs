@@ -46,6 +46,13 @@ public sealed class MapCanvasControl : Control
     private int _tileRectStartY = -1;
     private int _tileRectEndX = -1;
     private int _tileRectEndY = -1;
+    private bool _externalRectSelectionMode;
+    private bool _externalRectDragging;
+    private bool _externalRectHasSelection;
+    private int _externalRectStartX = -1;
+    private int _externalRectStartY = -1;
+    private int _externalRectEndX = -1;
+    private int _externalRectEndY = -1;
     private int _dragObjectIndex = -1;
     private int _dragStartX;
     private int _dragStartY;
@@ -66,6 +73,8 @@ public sealed class MapCanvasControl : Control
     public event EventHandler? TilePainted;
     public event EventHandler? TilePaintStrokeStarted;
     public event EventHandler? TilePaintStrokeCompleted;
+    public event EventHandler? ExternalRectSelectionChanged;
+    public event EventHandler? ExternalRectSelectionCompleted;
 
     private MapEditMode _editMode = MapEditMode.MoveObjects;
 
@@ -119,10 +128,59 @@ public sealed class MapCanvasControl : Control
         _pointerDown = false;
         _selectedObjectIndex = -1;
         _hasHoverPointer = false;
+        _externalRectSelectionMode = false;
+        _externalRectDragging = false;
+        _externalRectHasSelection = false;
+        _externalRectStartX = -1;
+        _externalRectStartY = -1;
+        _externalRectEndX = -1;
+        _externalRectEndY = -1;
         RecalculateTileStep();
         CenterAndFit();
         UpdateCursor();
         InvalidateVisual();
+    }
+
+    public void SetExternalRectSelectionMode(bool enabled)
+    {
+        _externalRectSelectionMode = enabled;
+        if (!enabled)
+        {
+            _externalRectDragging = false;
+        }
+
+        UpdateCursor();
+        InvalidateVisual();
+    }
+
+    public void ClearExternalRectSelection()
+    {
+        _externalRectDragging = false;
+        _externalRectHasSelection = false;
+        _externalRectStartX = -1;
+        _externalRectStartY = -1;
+        _externalRectEndX = -1;
+        _externalRectEndY = -1;
+        ExternalRectSelectionChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
+    }
+
+    public bool TryGetExternalRect(out int minX, out int maxX, out int minY, out int maxY)
+    {
+        minX = -1;
+        maxX = -1;
+        minY = -1;
+        maxY = -1;
+        if (!_externalRectHasSelection || _externalRectStartX < 0 || _externalRectStartY < 0 || _externalRectEndX < 0 || _externalRectEndY < 0)
+        {
+            return false;
+        }
+
+        minX = Math.Min(_externalRectStartX, _externalRectEndX);
+        maxX = Math.Max(_externalRectStartX, _externalRectEndX);
+        minY = Math.Min(_externalRectStartY, _externalRectEndY);
+        maxY = Math.Max(_externalRectStartY, _externalRectEndY);
+        return true;
     }
 
     public void SetTerrainHashes(uint landHash, uint waterHash)
@@ -213,6 +271,25 @@ public sealed class MapCanvasControl : Control
 
         _pointerDown = true;
 
+        if (isLeft && _externalRectSelectionMode)
+        {
+            if (TryGetGridAtPointClamped(_lastPointer, out var startX, out var startY))
+            {
+                _externalRectDragging = true;
+                _externalRectHasSelection = true;
+                _externalRectStartX = startX;
+                _externalRectStartY = startY;
+                _externalRectEndX = startX;
+                _externalRectEndY = startY;
+                ExternalRectSelectionChanged?.Invoke(this, EventArgs.Empty);
+                InvalidateVisual();
+            }
+
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
+
         if (isLeft && (EditMode == MapEditMode.AddLand || EditMode == MapEditMode.DeleteLand))
         {
             TilePaintStrokeStarted?.Invoke(this, EventArgs.Empty);
@@ -280,6 +357,18 @@ public sealed class MapCanvasControl : Control
         var dy = position.Y - _lastPointer.Y;
         _lastPointer = position;
 
+        if (_externalRectSelectionMode && _pointerDown && _externalRectDragging)
+        {
+            if (TryGetGridAtPointClamped(position, out var endX, out var endY))
+            {
+                _externalRectEndX = endX;
+                _externalRectEndY = endY;
+                ExternalRectSelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+            InvalidateVisual();
+            return;
+        }
+
         if (_paintingTiles)
         {
             if (_tileRectSelecting)
@@ -315,6 +404,24 @@ public sealed class MapCanvasControl : Control
         base.OnPointerReleased(e);
         if (!_pointerDown)
         {
+            return;
+        }
+
+        if (_externalRectSelectionMode)
+        {
+            _pointerDown = false;
+            var completed = _externalRectDragging;
+            _externalRectDragging = false;
+            if (completed)
+            {
+                _externalRectHasSelection = true;
+                ExternalRectSelectionCompleted?.Invoke(this, EventArgs.Empty);
+                ExternalRectSelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+
+            e.Pointer.Capture(null);
+            UpdateCursor();
+            InvalidateVisual();
             return;
         }
 
@@ -755,6 +862,17 @@ public sealed class MapCanvasControl : Control
             return;
         }
 
+        if (_externalRectSelectionMode || _externalRectHasSelection)
+        {
+            if (TryGetExternalRect(out var extMinX, out var extMaxX, out var extMinY, out var extMaxY))
+            {
+                var extRect = GetTileRectScreenBounds(extMinX, extMaxX, extMinY, extMaxY);
+                var extStroke = new Pen(new SolidColorBrush(Color.Parse("#FF00B0FF")), 2);
+                var extFill = new SolidColorBrush(Color.Parse("#3300B0FF"));
+                context.DrawRectangle(extFill, extStroke, extRect);
+            }
+        }
+
         if (EditMode is MapEditMode.AddLand or MapEditMode.DeleteLand)
         {
             if (_tileRectSelecting && _tileRectStartX >= 0 && _tileRectStartY >= 0 && _tileRectEndX >= 0 && _tileRectEndY >= 0)
@@ -910,6 +1028,12 @@ public sealed class MapCanvasControl : Control
 
     private void UpdateCursor()
     {
+        if (_externalRectSelectionMode)
+        {
+            Cursor = new Cursor(StandardCursorType.Cross);
+            return;
+        }
+
         Cursor = EditMode switch
         {
             MapEditMode.AddLand => new Cursor(StandardCursorType.None),

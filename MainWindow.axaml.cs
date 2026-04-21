@@ -13,6 +13,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
@@ -46,6 +47,7 @@ public partial class MainWindow : Window
     private const string LatestReleaseApiUrl = "https://api.github.com/repos/cakezara/ltd-islandeditor/releases/latest";
     private const string ReleasesPageUrl = "https://github.com/cakezara/ltd-islandeditor/releases";
     private const string GameBananaUrl = "https://gamebanana.com/tools/22455";
+    private const string DebugVersionToken = "DebugCakeZara";
 
     private readonly Grid _editorRoot;
     private readonly Border _hubPanel;
@@ -54,11 +56,14 @@ public partial class MainWindow : Window
     private readonly Button _githubLinkButton;
     private readonly Button _gameBananaLinkButton;
     private readonly Button _hubGameBananaPromptCloseButton;
+    private readonly Button _hubDebugPromptCloseButton;
     private readonly TextBlock _hubFooterText;
+    private readonly TextBlock _hubModeText;
     private readonly TextBlock _hubLatestVersionText;
     private readonly TextBlock _hubGameBananaLikeText;
     private readonly TextBlock _bottomGameBananaLikeText;
     private readonly Border _hubGameBananaPrompt;
+    private readonly Border _hubDebugPrompt;
     private readonly Button _saveMapButton;
     private readonly Button _saveAsMapButton;
     private readonly Button _exitMapSavButton;
@@ -68,6 +73,12 @@ public partial class MainWindow : Window
     private readonly Button _moveObjectsButton;
     private readonly Button _addLandButton;
     private readonly Button _deleteLandButton;
+    private readonly Button _debugImportTilesButton;
+    private readonly Button _debugChooseImageButton;
+    private readonly Button _debugApplyImageImportButton;
+    private readonly Button _debugInsertImageImportButton;
+    private readonly Button _debugCloseImageImportButton;
+    private readonly Button _debugSelectAreaButton;
     private readonly Button _load3DButton;
     private readonly Button _applyMapSavValueButton;
     private readonly Button _panLeft2DButton;
@@ -78,6 +89,7 @@ public partial class MainWindow : Window
     private readonly Button _zoomOut2DButton;
     private readonly Button _resetView2DButton;
     private readonly ComboBox _paintTileTypeCombo;
+    private readonly ComboBox _debugImageSizingCombo;
     private readonly TextBox _rootPathText;
     private readonly TextBlock _mapInfoText;
     private readonly TextBlock _viewerInfoText;
@@ -87,7 +99,12 @@ public partial class MainWindow : Window
     private readonly TextBlock _mapSavSelectedPathText;
     private readonly TextBlock _mapSavSelectedTypeText;
     private readonly TextBlock _objectCatalogCountText;
+    private readonly TextBlock _debugImagePathText;
+    private readonly TextBlock _debugImageSummaryText;
+    private readonly TextBlock _debugAreaText;
+    private readonly Border _debugImageImportPanel;
     private readonly StackPanel _floorLegendPanel;
+    private readonly StackPanel _debugTileMappingPanel;
     private readonly ListBox _objectList;
     private readonly ListBox _objectCatalogList;
     private readonly ListBox _mapSavEntryList;
@@ -95,6 +112,7 @@ public partial class MainWindow : Window
     private readonly TextBox _mapSavPathText;
     private readonly TextBox _mapSavValueText;
     private readonly TabItem _mapSavTab;
+    private readonly TabItem _threeDTab;
     private readonly TabControl _viewerTabs;
     private readonly MapCanvasControl _mapCanvas;
     private readonly Scene3DControl _scene3D;
@@ -146,6 +164,15 @@ public partial class MainWindow : Window
     private readonly Button _addObjectFromCatalogButton;
     private List<ObjectCatalogOption> _allObjectCatalogOptions = [];
     private bool _hasClickedGameBananaLikeLink;
+    private bool _hasDismissedDebugPrompt;
+    private readonly bool _isDebugMode;
+    private readonly Dictionary<int, uint> _debugImportColorToTile = [];
+    private readonly List<DebugTileImportMapping> _debugTileMappings = [];
+    private readonly List<uint> _debugImportPalette = [];
+    private byte[]? _debugImportPixels;
+    private int _debugImportWidth;
+    private int _debugImportHeight;
+    private string _debugImportImagePath = string.Empty;
 
     private sealed class MapEditSnapshot
     {
@@ -196,6 +223,24 @@ public partial class MainWindow : Window
         public bool HasClickedGameBananaLikeLink { get; set; }
     }
 
+    private enum DebugImageSizingMode
+    {
+        StretchToMap,
+        CenterNoScale,
+        TileRepeat
+    }
+
+    private sealed class DebugTileImportMapping
+    {
+        public required int ArgbKey { get; init; }
+        public required byte R { get; init; }
+        public required byte G { get; init; }
+        public required byte B { get; init; }
+        public required byte A { get; init; }
+        public required int PixelCount { get; init; }
+        public uint TileHash { get; set; }
+    }
+
     public MainWindow()
     {
         AvaloniaXamlLoader.Load(this);
@@ -208,11 +253,14 @@ public partial class MainWindow : Window
         _githubLinkButton = this.FindControl<Button>("GithubLinkButton")!;
         _gameBananaLinkButton = this.FindControl<Button>("GameBananaLinkButton")!;
         _hubGameBananaPromptCloseButton = this.FindControl<Button>("HubGameBananaPromptCloseButton")!;
+        _hubDebugPromptCloseButton = this.FindControl<Button>("HubDebugPromptCloseButton")!;
         _hubFooterText = this.FindControl<TextBlock>("HubFooterText")!;
+        _hubModeText = this.FindControl<TextBlock>("HubModeText")!;
         _hubLatestVersionText = this.FindControl<TextBlock>("HubLatestVersionText")!;
         _hubGameBananaLikeText = this.FindControl<TextBlock>("HubGameBananaLikeText")!;
         _bottomGameBananaLikeText = this.FindControl<TextBlock>("BottomGameBananaLikeText")!;
         _hubGameBananaPrompt = this.FindControl<Border>("HubGameBananaPrompt")!;
+        _hubDebugPrompt = this.FindControl<Border>("HubDebugPrompt")!;
         _saveMapButton = this.FindControl<Button>("SaveMapButton")!;
         _saveAsMapButton = this.FindControl<Button>("SaveAsMapButton")!;
         _exitMapSavButton = this.FindControl<Button>("ExitMapSavButton")!;
@@ -232,6 +280,13 @@ public partial class MainWindow : Window
         _zoomOut2DButton = this.FindControl<Button>("ZoomOut2DButton")!;
         _resetView2DButton = this.FindControl<Button>("ResetView2DButton")!;
         _paintTileTypeCombo = this.FindControl<ComboBox>("PaintTileTypeCombo")!;
+        _debugImportTilesButton = this.FindControl<Button>("DebugImportTilesButton")!;
+        _debugChooseImageButton = this.FindControl<Button>("DebugChooseImageButton")!;
+        _debugApplyImageImportButton = this.FindControl<Button>("DebugApplyImageImportButton")!;
+        _debugInsertImageImportButton = this.FindControl<Button>("DebugInsertImageImportButton")!;
+        _debugCloseImageImportButton = this.FindControl<Button>("DebugCloseImageImportButton")!;
+        _debugSelectAreaButton = this.FindControl<Button>("DebugSelectAreaButton")!;
+        _debugImageSizingCombo = this.FindControl<ComboBox>("DebugImageSizingCombo")!;
         _rootPathText = this.FindControl<TextBox>("RootPathText")!;
         _mapInfoText = this.FindControl<TextBlock>("MapInfoText")!;
         _viewerInfoText = this.FindControl<TextBlock>("ViewerInfoText")!;
@@ -241,7 +296,12 @@ public partial class MainWindow : Window
         _mapSavSelectedPathText = this.FindControl<TextBlock>("MapSavSelectedPathText")!;
         _mapSavSelectedTypeText = this.FindControl<TextBlock>("MapSavSelectedTypeText")!;
         _objectCatalogCountText = this.FindControl<TextBlock>("ObjectCatalogCountText")!;
+        _debugImagePathText = this.FindControl<TextBlock>("DebugImagePathText")!;
+        _debugImageSummaryText = this.FindControl<TextBlock>("DebugImageSummaryText")!;
+        _debugAreaText = this.FindControl<TextBlock>("DebugAreaText")!;
+        _debugImageImportPanel = this.FindControl<Border>("DebugImageImportPanel")!;
         _floorLegendPanel = this.FindControl<StackPanel>("FloorLegendPanel")!;
+        _debugTileMappingPanel = this.FindControl<StackPanel>("DebugTileMappingPanel")!;
         _objectList = this.FindControl<ListBox>("ObjectList")!;
         _objectCatalogList = this.FindControl<ListBox>("ObjectCatalogList")!;
         _mapSavEntryList = this.FindControl<ListBox>("MapSavEntryList")!;
@@ -249,6 +309,7 @@ public partial class MainWindow : Window
         _mapSavPathText = this.FindControl<TextBox>("MapSavPathText")!;
         _mapSavValueText = this.FindControl<TextBox>("MapSavValueText")!;
         _mapSavTab = this.FindControl<TabItem>("MapSavTab")!;
+        _threeDTab = this.FindControl<TabItem>("ThreeDTab")!;
         _viewerTabs = this.FindControl<TabControl>("ViewerTabs")!;
         _mapCanvas = this.FindControl<MapCanvasControl>("MapCanvas")!;
         _scene3D = this.FindControl<Scene3DControl>("Scene3D")!;
@@ -260,18 +321,49 @@ public partial class MainWindow : Window
         _mapSavStatusText.Text = "Load a Map.sav to edit flags.";
         _applyMapSavValueButton.IsEnabled = false;
         _paintTileTypeCombo.IsEnabled = false;
+        _debugImportTilesButton.IsVisible = false;
+        _debugImageImportPanel.IsVisible = false;
+        _debugChooseImageButton.IsEnabled = false;
+        _debugApplyImageImportButton.IsEnabled = false;
+        _debugInsertImageImportButton.IsEnabled = false;
+        _debugCloseImageImportButton.IsEnabled = false;
+        _debugSelectAreaButton.IsEnabled = false;
+        _debugImagePathText.Text = "No image selected.";
+        _debugImageSummaryText.Text = "Load an image to preview and edit tile mappings.";
+        _debugAreaText.Text = "Area: drag on map";
+        _debugImageSizingCombo.ItemsSource = new List<string>
+        {
+            "Stretch to map",
+            "Center (1px = 1 tile)",
+            "Tile repeat"
+        };
+        _debugImageSizingCombo.SelectedIndex = 0;
         _addObjectFromCatalogButton.IsEnabled = false;
         _versionNumber = ReadVersionNumber();
+        _isDebugMode = string.Equals(_versionNumber, DebugVersionToken, StringComparison.Ordinal);
         LoadUserPreferences();
         _hubFooterText.Text = $"cakezara - {_versionNumber}";
+        _hubModeText.Text = _isDebugMode
+            ? "Debug Menu"
+            : "Select one of the options below to start editing";
         _hubLatestVersionText.IsVisible = false;
         Title = $"Tomodachi Island Editor - {_versionNumber}";
+        _debugImportTilesButton.IsVisible = _isDebugMode;
+        _debugImportTilesButton.IsEnabled = _isDebugMode;
+        _threeDTab.IsEnabled = _isDebugMode;
+        _threeDTab.Opacity = _isDebugMode ? 1.0 : 0.55;
+        if (_isDebugMode)
+        {
+            _statusText.Text = "Debug mode is ON";
+        }
+        UpdateDebugImportUiState();
 
         _hubBrowseButton.Click += BrowseRootButtonOnClick;
         _hubBrowseMapSavButton.Click += BrowseMapSavButtonOnClick;
         _githubLinkButton.Click += (_, _) => OpenExternalUrl("https://github.com/cakezara/ltd-islandeditor", "GitHub");
         _gameBananaLinkButton.Click += (_, _) => OpenGameBananaLikeLink();
         _hubGameBananaPromptCloseButton.Click += HubGameBananaPromptCloseButtonOnClick;
+        _hubDebugPromptCloseButton.Click += HubDebugPromptCloseButtonOnClick;
         _hubGameBananaLikeText.PointerPressed += GameBananaLikeTextOnPointerPressed;
         _bottomGameBananaLikeText.PointerPressed += GameBananaLikeTextOnPointerPressed;
         _hubLatestVersionText.PointerPressed += HubLatestVersionTextOnPointerPressed;
@@ -283,6 +375,12 @@ public partial class MainWindow : Window
         _moveObjectsButton.Click += MoveObjectsButtonOnClick;
         _addLandButton.Click += AddLandButtonOnClick;
         _deleteLandButton.Click += DeleteLandButtonOnClick;
+        _debugImportTilesButton.Click += DebugImportTilesButtonOnClick;
+        _debugChooseImageButton.Click += DebugChooseImageButtonOnClick;
+        _debugApplyImageImportButton.Click += DebugApplyImageImportButtonOnClick;
+        _debugInsertImageImportButton.Click += DebugInsertImageImportButtonOnClick;
+        _debugCloseImageImportButton.Click += DebugCloseImageImportButtonOnClick;
+        _debugSelectAreaButton.Click += DebugSelectAreaButtonOnClick;
         _load3DButton.Click += Load3DButtonOnClick;
         _exitMapSavButton.Click += ExitMapSavButtonOnClick;
         _applyMapSavValueButton.Click += ApplyMapSavValueButtonOnClick;
@@ -305,6 +403,8 @@ public partial class MainWindow : Window
         _mapCanvas.TilePainted += MapCanvasOnTilePainted;
         _mapCanvas.TilePaintStrokeStarted += MapCanvasOnTilePaintStrokeStarted;
         _mapCanvas.TilePaintStrokeCompleted += MapCanvasOnTilePaintStrokeCompleted;
+        _mapCanvas.ExternalRectSelectionChanged += MapCanvasOnExternalRectSelectionChanged;
+        _mapCanvas.ExternalRectSelectionCompleted += MapCanvasOnExternalRectSelectionCompleted;
         BuildObjectContextMenus();
         KeyDown += MainWindowOnKeyDown;
         Closing += MainWindowOnClosing;
@@ -320,6 +420,12 @@ public partial class MainWindow : Window
     private void HubGameBananaPromptCloseButtonOnClick(object? sender, RoutedEventArgs e)
     {
         _hubGameBananaPrompt.IsVisible = false;
+    }
+
+    private void HubDebugPromptCloseButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        _hasDismissedDebugPrompt = true;
+        _hubDebugPrompt.IsVisible = false;
     }
 
     private void GameBananaLikeTextOnPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -433,6 +539,11 @@ public partial class MainWindow : Window
 
     private async Task CheckForUpdatesOnBootAsync()
     {
+        if (_isDebugMode)
+        {
+            return;
+        }
+
         try
         {
             var updateAvailable = await CheckForLatestReleaseAsync();
@@ -878,6 +989,216 @@ public partial class MainWindow : Window
         _viewerTabs.SelectedIndex = 0;
         _viewerInfoText.Text = Path.GetFileName(file);
         _statusText.Text = $"Loaded Map.sav: {Path.GetFileName(file)}";
+    }
+
+    private void DebugImportTilesButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!_isDebugMode)
+        {
+            _statusText.Text = "Error.";
+            return;
+        }
+
+        _debugImageImportPanel.IsVisible = !_debugImageImportPanel.IsVisible;
+        _mapCanvas.SetExternalRectSelectionMode(false);
+        UpdateDebugImportUiState();
+    }
+
+    private async void DebugChooseImageButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        await LoadDebugImportImageAsync();
+    }
+
+    private void DebugApplyImageImportButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        ApplyDebugImageImport();
+    }
+
+    private void DebugInsertImageImportButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        ApplyDebugImageImport();
+    }
+
+    private void DebugCloseImageImportButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        _debugImageImportPanel.IsVisible = false;
+        _mapCanvas.SetExternalRectSelectionMode(false);
+        UpdateDebugImportAreaText();
+        UpdateDebugImportUiState();
+    }
+
+    private void DebugSelectAreaButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_currentMap is null)
+        {
+            _statusText.Text = "Load a map first.";
+            return;
+        }
+
+        _debugImageImportPanel.IsVisible = true;
+        _mapCanvas.SetExternalRectSelectionMode(true);
+        _statusText.Text = "Drag on the map to select image import area.";
+        UpdateDebugImportAreaText();
+        UpdateDebugImportUiState();
+    }
+
+    private void MapCanvasOnExternalRectSelectionChanged(object? sender, EventArgs e)
+    {
+        UpdateDebugImportAreaText();
+    }
+
+    private void MapCanvasOnExternalRectSelectionCompleted(object? sender, EventArgs e)
+    {
+        UpdateDebugImportAreaText();
+        _mapCanvas.SetExternalRectSelectionMode(false);
+        _statusText.Text = "Image import area selected.";
+    }
+
+    private void UpdateDebugImportAreaText()
+    {
+        if (_mapCanvas.TryGetExternalRect(out var minX, out var maxX, out var minY, out var maxY))
+        {
+            _debugAreaText.Text = $"Area: ({minX},{minY})-({maxX},{maxY}) {maxX - minX + 1}x{maxY - minY + 1}";
+            return;
+        }
+
+        _debugAreaText.Text = "Area: drag on map";
+    }
+
+    private async Task LoadDebugImportImageAsync()
+    {
+        if (!_isDebugMode)
+        {
+            _statusText.Text = "Error.";
+            return;
+        }
+
+        if (_currentMap is null)
+        {
+            _statusText.Text = "Load a map first.";
+            return;
+        }
+
+        var top = GetTopLevel(this);
+        if (top?.StorageProvider is null)
+        {
+            return;
+        }
+
+        var imageFilter = new FilePickerFileType("Image files")
+        {
+            Patterns = ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.webp"]
+        };
+        var allFilter = new FilePickerFileType("All files")
+        {
+            Patterns = ["*"]
+        };
+
+        var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Debug: Import Tile Image",
+            AllowMultiple = false,
+            FileTypeFilter = [imageFilter, allFilter]
+        });
+
+        var imagePath = files.FirstOrDefault()?.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return;
+        }
+
+        if (!TryReadImagePixelsBgra(imagePath, out var pixels, out var sourceWidth, out var sourceHeight, out var error))
+        {
+            _statusText.Text = error;
+            return;
+        }
+
+        _debugImportPixels = pixels;
+        _debugImportWidth = sourceWidth;
+        _debugImportHeight = sourceHeight;
+        _debugImportImagePath = imagePath;
+        _debugImagePathText.Text = Path.GetFileName(imagePath);
+        BuildDebugImportMappings(_currentMap, pixels);
+        _debugImageImportPanel.IsVisible = true;
+        UpdateDebugImportUiState();
+        _statusText.Text = $"Debug image loaded: {Path.GetFileName(imagePath)}";
+    }
+
+    private void ApplyDebugImageImport()
+    {
+        if (!_isDebugMode)
+        {
+            _statusText.Text = "Error.";
+            return;
+        }
+
+        if (_currentMap is null)
+        {
+            _statusText.Text = "Load a map first.";
+            return;
+        }
+
+        if (_debugImportPixels is null || _debugImportWidth <= 0 || _debugImportHeight <= 0 || _debugImportColorToTile.Count == 0)
+        {
+            _statusText.Text = "Choose an image in the debug import menu first.";
+            return;
+        }
+
+        if (!_mapCanvas.TryGetExternalRect(out var minX, out var maxX, out var minY, out var maxY))
+        {
+            _statusText.Text = "Select an area first (use Select Area, then drag on map).";
+            return;
+        }
+
+        var snapshot = CaptureSnapshot(_currentMap);
+        var sizingMode = GetDebugImageSizingMode();
+        var changedCount = ApplyDebugTileImageToMap(
+            _currentMap,
+            _debugImportPixels,
+            _debugImportWidth,
+            _debugImportHeight,
+            sizingMode,
+            _debugImportColorToTile,
+            minX,
+            maxX,
+            minY,
+            maxY);
+        if (changedCount <= 0)
+        {
+            _statusText.Text = "Debug tile import made no tile changes.";
+            return;
+        }
+
+        PushUndoSnapshot(snapshot);
+        DetermineTerrainHashes(_currentMap, out _landHash, out _waterHash);
+        BuildTileColorMap(_currentMap);
+        _mapCanvas.SetTileColorMap(_tileColorByHash);
+        RefreshFloorLegend(_currentMap);
+        RefreshPaintTileTypeOptions(_currentMap);
+        _mapCanvas.InvalidateVisual();
+        _statusText.Text = $"Debug tile import applied from {Path.GetFileName(_debugImportImagePath)}: {changedCount} tiles changed.";
+    }
+
+    private void UpdateDebugImportUiState()
+    {
+        var enabled = _isDebugMode && _currentMap is not null;
+        _debugImportTilesButton.IsVisible = _isDebugMode;
+        _debugImportTilesButton.IsEnabled = enabled;
+        _debugChooseImageButton.IsEnabled = enabled && _debugImageImportPanel.IsVisible;
+        _debugSelectAreaButton.IsEnabled = enabled && _debugImageImportPanel.IsVisible;
+        _debugApplyImageImportButton.IsEnabled = enabled && _debugImageImportPanel.IsVisible && _debugImportColorToTile.Count > 0;
+        _debugInsertImageImportButton.IsEnabled = enabled && _debugImageImportPanel.IsVisible && _debugImportColorToTile.Count > 0;
+        _debugCloseImageImportButton.IsEnabled = enabled && _debugImageImportPanel.IsVisible;
+    }
+
+    private DebugImageSizingMode GetDebugImageSizingMode()
+    {
+        return _debugImageSizingCombo.SelectedIndex switch
+        {
+            1 => DebugImageSizingMode.CenterNoScale,
+            2 => DebugImageSizingMode.TileRepeat,
+            _ => DebugImageSizingMode.StretchToMap
+        };
     }
 
     private async void ExitMapSavButtonOnClick(object? sender, RoutedEventArgs e)
@@ -2526,13 +2847,17 @@ public partial class MainWindow : Window
 
         RefreshObjectList(map);
         _mapCanvas.SetMap(map, ResolveObjectName);
+        _mapCanvas.ClearExternalRectSelection();
+        _mapCanvas.SetExternalRectSelectionMode(false);
         _scene3D.SetScene([]);
         _threeDStatusText.Text = "Ready to load 3D models.";
         RefreshFloorLegend(map);
         RefreshPaintTileTypeOptions(map);
+        UpdateDebugImportAreaText();
         UpdateViewerInfoText(map.Name);
         UpdateObjectCatalogAddButtonState();
         _statusText.Text = $"Move mode | land hash {_landHash} | water hash {_waterHash}";
+        UpdateDebugImportUiState();
     }
 
     private void ObjectSearchTextOnTextChanged(object? sender, TextChangedEventArgs e)
@@ -2718,6 +3043,13 @@ public partial class MainWindow : Window
 
     private void MainWindowOnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (_debugImageImportPanel.IsVisible && e.Key == Key.Enter)
+        {
+            ApplyDebugImageImport();
+            e.Handled = true;
+            return;
+        }
+
         var primaryModifier = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         if (primaryModifier && e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
@@ -2940,11 +3272,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_gameRootPath) ||
-            !Directory.Exists(Path.Combine(_gameRootPath, "Model")) ||
-            !Directory.Exists(Path.Combine(_gameRootPath, "Tex")))
+        var modelRootPath = await Pick3DModelRootPathAsync();
+        if (string.IsNullOrWhiteSpace(modelRootPath))
         {
-            _threeDStatusText.Text = "Game root is missing Model and/or Tex folders.";
+            _threeDStatusText.Text = "3D load canceled.";
+            return;
+        }
+
+        var modelDirectory = Directory.Exists(Path.Combine(modelRootPath, "Model"))
+            ? Path.Combine(modelRootPath, "Model")
+            : modelRootPath;
+        if (!Directory.Exists(modelDirectory))
+        {
+            _threeDStatusText.Text = "Selected folder does not contain model files.";
             return;
         }
 
@@ -2953,7 +3293,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var resolver = new ModelFileResolver(_gameRootPath);
+            var resolver = new ModelFileResolver(modelRootPath);
             var distinctHashes = map.Objects.Select(o => o.Hash).Distinct().ToList();
             var loadedByHash = new Dictionary<uint, BfresMeshData>();
             var failedLoads = 0;
@@ -2999,7 +3339,7 @@ public partial class MainWindow : Window
                 .ToList();
 
             _scene3D.SetScene(instances);
-            _threeDStatusText.Text = $"Root: {_gameRootPath} | names matched {resolvedNames} | model types {loadedByHash.Count} | instances {instances.Count} | failed {failedLoads}.";
+            _threeDStatusText.Text = $"Models: {modelDirectory} | names matched {resolvedNames} | model types {loadedByHash.Count} | instances {instances.Count} | failed {failedLoads}.";
         }
         catch (Exception ex)
         {
@@ -3009,6 +3349,37 @@ public partial class MainWindow : Window
         {
             _load3DButton.IsEnabled = true;
         }
+    }
+
+    private async Task<string?> Pick3DModelRootPathAsync()
+    {
+        var top = GetTopLevel(this);
+        if (top?.StorageProvider is null)
+        {
+            return null;
+        }
+
+        var folders = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Select game root or Model folder for 3D",
+            AllowMultiple = false
+        });
+        var selectedPath = folders.FirstOrDefault()?.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(selectedPath))
+        {
+            return null;
+        }
+
+        if (string.Equals(Path.GetFileName(selectedPath), "Model", StringComparison.OrdinalIgnoreCase))
+        {
+            var parent = Directory.GetParent(selectedPath)?.FullName;
+            if (!string.IsNullOrWhiteSpace(parent))
+            {
+                return parent;
+            }
+        }
+
+        return selectedPath;
     }
 
     private bool TryResolveModelPathForHash(ModelFileResolver resolver, uint hash, out string? modelPath)
@@ -3378,6 +3749,7 @@ public partial class MainWindow : Window
             MaxHeight = HubHeight;
             CanResize = false;
             _hubGameBananaPrompt.IsVisible = !_hasClickedGameBananaLikeLink;
+            _hubDebugPrompt.IsVisible = _isDebugMode && !_hasDismissedDebugPrompt;
         }
         else
         {
@@ -3389,6 +3761,7 @@ public partial class MainWindow : Window
             MaxHeight = double.PositiveInfinity;
             CanResize = true;
             _hubGameBananaPrompt.IsVisible = false;
+            _hubDebugPrompt.IsVisible = false;
         }
     }
 
@@ -3805,6 +4178,343 @@ public partial class MainWindow : Window
         }
     }
 
+    private int ApplyDebugTileImageToMap(
+        MapProject map,
+        byte[] pixels,
+        int sourceWidth,
+        int sourceHeight,
+        DebugImageSizingMode sizingMode,
+        IReadOnlyDictionary<int, uint> colorToTile,
+        int minX,
+        int maxX,
+        int minY,
+        int maxY)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0 || map.Width <= 0 || map.Height <= 0 || colorToTile.Count == 0)
+        {
+            return 0;
+        }
+
+        minX = Math.Clamp(minX, 0, map.Width - 1);
+        maxX = Math.Clamp(maxX, 0, map.Width - 1);
+        minY = Math.Clamp(minY, 0, map.Height - 1);
+        maxY = Math.Clamp(maxY, 0, map.Height - 1);
+        if (maxX < minX || maxY < minY)
+        {
+            return 0;
+        }
+
+        var changed = 0;
+        var targetWidth = maxX - minX + 1;
+        var targetHeight = maxY - minY + 1;
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = minX; x <= maxX; x++)
+            {
+                if (!TryGetDebugImageSourceCoord(
+                        targetWidth,
+                        targetHeight,
+                        sourceWidth,
+                        sourceHeight,
+                        x - minX,
+                        y - minY,
+                        sizingMode,
+                        out var sourceX,
+                        out var sourceY))
+                {
+                    continue;
+                }
+
+                var i = ((sourceY * sourceWidth) + sourceX) * 4;
+                var b = pixels[i];
+                var g = pixels[i + 1];
+                var r = pixels[i + 2];
+                var key = ToRgbKey(r, g, b);
+                if (!colorToTile.TryGetValue(key, out var hash))
+                {
+                    continue;
+                }
+
+                if (map.Grid[x, y] == hash)
+                {
+                    continue;
+                }
+
+                map.Grid[x, y] = hash;
+                changed++;
+            }
+        }
+
+        return changed;
+    }
+
+    private void BuildDebugImportMappings(MapProject map, byte[] pixels)
+    {
+        _debugImportPalette.Clear();
+        _debugImportPalette.AddRange(BuildDebugTileImportPalette(map));
+        var paletteColors = _debugImportPalette.ToDictionary(hash => hash, ResolveSemanticTileColor);
+
+        var counts = CountImageColors(pixels);
+        _debugImportColorToTile.Clear();
+        foreach (var kv in counts)
+        {
+            DecodeRgbKey(kv.Key, out var r, out var g, out var b);
+            _debugImportColorToTile[kv.Key] = FindNearestTileHash(r, g, b, _debugImportPalette, paletteColors);
+        }
+
+        _debugTileMappings.Clear();
+        foreach (var kv in counts.OrderByDescending(x => x.Value).Take(96))
+        {
+            if (!_debugImportColorToTile.TryGetValue(kv.Key, out var hash))
+            {
+                continue;
+            }
+
+            DecodeRgbKey(kv.Key, out var r, out var g, out var b);
+            _debugTileMappings.Add(new DebugTileImportMapping
+            {
+                ArgbKey = kv.Key,
+                A = 255,
+                R = r,
+                G = g,
+                B = b,
+                PixelCount = kv.Value,
+                TileHash = hash
+            });
+        }
+
+        PopulateDebugTileMappingPanel();
+        var shown = _debugTileMappings.Count;
+        var total = _debugImportColorToTile.Count;
+        _debugImageSummaryText.Text = total > shown
+            ? $"Detected {total} image colors. Showing top {shown} mappings (most used)."
+            : $"Detected {total} image colors.";
+    }
+
+    private void PopulateDebugTileMappingPanel()
+    {
+        _debugTileMappingPanel.Children.Clear();
+        if (_debugTileMappings.Count == 0)
+        {
+            _debugTileMappingPanel.Children.Add(new TextBlock
+            {
+                Text = "No visible colors found in the selected image.",
+                Foreground = new SolidColorBrush(Color.Parse("#FFCACACA")),
+                FontSize = 10
+            });
+            return;
+        }
+
+        var options = _debugImportPalette
+            .Select(hash => new PaintTileOption
+            {
+                Hash = hash,
+                Name = ResolveFloorName(hash),
+                Count = 0
+            })
+            .ToList();
+
+        foreach (var mapping in _debugTileMappings)
+        {
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            row.Children.Add(new Border
+            {
+                Width = 12,
+                Height = 12,
+                Background = new SolidColorBrush(Color.FromArgb(mapping.A, mapping.R, mapping.G, mapping.B)),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FF6A6A6A")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(2),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            row.Children.Add(new TextBlock
+            {
+                Width = 96,
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Color.Parse("#FFE6E6E6")),
+                Text = $"#{mapping.R:X2}{mapping.G:X2}{mapping.B:X2} x{mapping.PixelCount}"
+            });
+
+            var combo = new ComboBox
+            {
+                Width = 150,
+                FontSize = 10,
+                ItemsSource = options,
+                Background = new SolidColorBrush(Color.Parse("#FF2F2F2F")),
+                Foreground = new SolidColorBrush(Color.Parse("#FFF0F0F0")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#FF4A4A4A"))
+            };
+
+            var selected = options.FirstOrDefault(o => o.Hash == mapping.TileHash) ?? options.First();
+            combo.SelectedItem = selected;
+            combo.SelectionChanged += (_, _) =>
+            {
+                if (combo.SelectedItem is not PaintTileOption option)
+                {
+                    return;
+                }
+
+                mapping.TileHash = option.Hash;
+                _debugImportColorToTile[mapping.ArgbKey] = option.Hash;
+            };
+            row.Children.Add(combo);
+            _debugTileMappingPanel.Children.Add(row);
+        }
+    }
+
+    private static Dictionary<int, int> CountImageColors(byte[] pixels)
+    {
+        var counts = new Dictionary<int, int>();
+        for (var i = 0; i + 3 < pixels.Length; i += 4)
+        {
+            var b = pixels[i];
+            var g = pixels[i + 1];
+            var r = pixels[i + 2];
+            var key = ToRgbKey(r, g, b);
+            counts[key] = counts.TryGetValue(key, out var n) ? n + 1 : 1;
+        }
+
+        return counts;
+    }
+
+    private static int ToRgbKey(byte r, byte g, byte b)
+    {
+        return (r << 16) | (g << 8) | b;
+    }
+
+    private static void DecodeRgbKey(int key, out byte r, out byte g, out byte b)
+    {
+        r = (byte)((key >> 16) & 0xFF);
+        g = (byte)((key >> 8) & 0xFF);
+        b = (byte)(key & 0xFF);
+    }
+
+    private static bool TryGetDebugImageSourceCoord(
+        int mapWidth,
+        int mapHeight,
+        int imageWidth,
+        int imageHeight,
+        int mapX,
+        int mapY,
+        DebugImageSizingMode mode,
+        out int sourceX,
+        out int sourceY)
+    {
+        sourceX = 0;
+        sourceY = 0;
+
+        switch (mode)
+        {
+            case DebugImageSizingMode.CenterNoScale:
+            {
+                var startX = (mapWidth - imageWidth) / 2;
+                var startY = (mapHeight - imageHeight) / 2;
+                sourceX = mapX - startX;
+                sourceY = mapY - startY;
+                return sourceX >= 0 && sourceY >= 0 && sourceX < imageWidth && sourceY < imageHeight;
+            }
+            case DebugImageSizingMode.TileRepeat:
+                sourceX = ((mapX % imageWidth) + imageWidth) % imageWidth;
+                sourceY = ((mapY % imageHeight) + imageHeight) % imageHeight;
+                return true;
+            default:
+                sourceX = Math.Clamp((int)((mapX + 0.5) * imageWidth / (double)mapWidth), 0, imageWidth - 1);
+                sourceY = Math.Clamp((int)((mapY + 0.5) * imageHeight / (double)mapHeight), 0, imageHeight - 1);
+                return true;
+        }
+    }
+
+    private List<uint> BuildDebugTileImportPalette(MapProject map)
+    {
+        var hashes = new HashSet<uint>(GetKnownTileHashes());
+        foreach (var hash in _floorNameLookup.Keys)
+        {
+            hashes.Add(hash);
+        }
+
+        for (var y = 0; y < map.Height; y++)
+        {
+            for (var x = 0; x < map.Width; x++)
+            {
+                hashes.Add(map.Grid[x, y]);
+            }
+        }
+
+        return hashes.OrderBy(h => ResolveFloorName(h), StringComparer.OrdinalIgnoreCase).ThenBy(h => h).ToList();
+    }
+
+    private static uint FindNearestTileHash(byte r, byte g, byte b, IReadOnlyList<uint> palette, IReadOnlyDictionary<uint, Color> colors)
+    {
+        var bestHash = palette[0];
+        var bestDistance = long.MaxValue;
+        foreach (var hash in palette)
+        {
+            var color = colors[hash];
+            var dr = r - color.R;
+            var dg = g - color.G;
+            var db = b - color.B;
+            var distance = (long)(dr * dr) + (long)(dg * dg) + (long)(db * db);
+            if (distance >= bestDistance)
+            {
+                continue;
+            }
+
+            bestDistance = distance;
+            bestHash = hash;
+        }
+
+        return bestHash;
+    }
+
+    private static bool TryReadImagePixelsBgra(string imagePath, out byte[] pixels, out int width, out int height, out string error)
+    {
+        pixels = [];
+        width = 0;
+        height = 0;
+        error = string.Empty;
+
+        try
+        {
+            using var stream = File.OpenRead(imagePath);
+            using var bitmap = new Bitmap(stream);
+            width = (int)Math.Round(bitmap.Size.Width, MidpointRounding.AwayFromZero);
+            height = (int)Math.Round(bitmap.Size.Height, MidpointRounding.AwayFromZero);
+            if (width <= 0 || height <= 0)
+            {
+                error = "Image has invalid dimensions.";
+                return false;
+            }
+
+            var stride = width * 4;
+            var bufferSize = stride * height;
+            var ptr = Marshal.AllocHGlobal(bufferSize);
+            try
+            {
+                bitmap.CopyPixels(new PixelRect(0, 0, width, height), ptr, bufferSize, stride);
+                pixels = new byte[bufferSize];
+                Marshal.Copy(ptr, pixels, 0, bufferSize);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(ptr);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Debug image import failed: {ex.Message}";
+            return false;
+        }
+    }
+
     private Color GetTileColor(uint hash)
     {
         return _tileColorByHash.TryGetValue(hash, out var color)
@@ -3814,11 +4524,6 @@ public partial class MainWindow : Window
 
     private string ResolveFloorName(uint hash)
     {
-        if (_floorNameLookup.TryGetValue(hash, out var names) && names.Count > 0)
-        {
-            return names[0].Replace('_', ' ');
-        }
-
         switch (hash)
         {
             case 0x5E52F4DEu:
@@ -3899,6 +4604,11 @@ public partial class MainWindow : Window
                 return "Wood";
             case 0x5E35B65Fu:
                 return "Wood Road";
+        }
+
+        if (_floorNameLookup.TryGetValue(hash, out var names) && names.Count > 0)
+        {
+            return names[0].Replace('_', ' ');
         }
 
         if (hash == _waterHash)
