@@ -1256,7 +1256,7 @@ public partial class MainWindow : Window
 
         var message = _mapSavDirty
             ? "You have unsaved Map.sav changes. Do you want to save before exiting?"
-            : "Do you want to save Map.sav before exiting to the hub?";
+            : "Do you want to save Map.sav before exiting?";
         var decision = await ShowMapSavUnsavedPromptAsync("Map.sav", message);
 
         switch (decision)
