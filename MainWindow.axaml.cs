@@ -3660,8 +3660,25 @@ public partial class MainWindow : Window
             }
         }
 
+        foreach (var hash in GetKnownTileHashes())
+        {
+            if (!counts.ContainsKey(hash))
+            {
+                counts[hash] = 0;
+            }
+        }
+
+        foreach (var hash in _floorNameLookup.Keys)
+        {
+            if (!counts.ContainsKey(hash))
+            {
+                counts[hash] = 0;
+            }
+        }
+
         var options = counts
             .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => ResolveFloorName(kv.Key), StringComparer.OrdinalIgnoreCase)
             .Select(kv => new PaintTileOption
             {
                 Hash = kv.Key,
@@ -3799,47 +3816,89 @@ public partial class MainWindow : Window
     {
         if (_floorNameLookup.TryGetValue(hash, out var names) && names.Count > 0)
         {
-            return names[0];
+            return names[0].Replace('_', ' ');
         }
 
         switch (hash)
         {
-            case 284683861u:
+            case 0x5E52F4DEu:
                 return "Path";
-            case 3040829245u:
-                return "Seaside";
-            case 2725462509u:
-                return "Clover";
-            case 3067570786u:
+            case 0x91DFA1EAu:
+                return "Path Road";
+            case 0xD7E5E4E0u:
+                return "Asphalt";
+            case 0xDE578684u:
+                return "Asphalt Road";
+            case 0xB6D76A62u:
                 return "Beach";
-            case 4283098762u:
-                return "Grass";
-            case 1798250199u:
+            case 0xB53F5F3Du:
+                return "Seaside";
+            case 0xA27341EDu:
+                return "Clover";
+            case 0xAFA5B5ABu:
+                return "Clover Road";
+            case 0xB019EFF9u:
+                return "Cobblestone";
+            case 0xA442959Eu:
+                return "Cobblestone Road";
+            case 0xCF83CF1Fu:
+                return "Concrete";
+            case 0x318904D8u:
+                return "Concrete Road";
+            case 0x54AE7E98u:
                 return "CherryBlossom";
-            case 2321083261u:
+            case 0xFF4AE68Au:
+                return "Grass";
+            case 0x2EF21057u:
+                return "Grass Road";
+            case 0xD1B37F49u:
+                return "CherryBlossom Road";
+            case 0x8A58EB7Du:
                 return "FallenLeaves";
-            case 961076275u:
+            case 0x923CFBD7u:
+                return "FallenLeaves Road";
+            case 0x3948DC33u:
                 return "Gold";
-            case 532232093u:
+            case 0x8698C8B7u:
+                return "Gold Road";
+            case 0x1FB9379Du:
                 return "Iron";
-            case 2286024813u:
+            case 0x8B39F8D2u:
+                return "Iron Road";
+            case 0xA4AFD856u:
                 return "Pebble";
-            case 2117934662u:
-                return "RoomInvalid";
-            case 2576994675u:
+            case 0xCA11E25Au:
+                return "Pebble Road";
+            case 0x17EE09E8u:
+                return "Room Invalid";
+            case 0x9999D173u:
                 return "Soil";
-            case 304774435u:
+            case 0x62F90493u:
+                return "Soil Road";
+            case 0x122A7D23u:
                 return "Sand";
-            case 1207314365u:
+            case 0x2B9B8582u:
+                return "Sand Road";
+            case 0x47F627BDu:
                 return "Snow";
-            case 2706712395u:
+            case 0xE9473287u:
+                return "Snow Road";
+            case 0x10F7EE55u:
+                return "Stone";
+            case 0xC67A3C6Cu:
+                return "Stone Road";
+            case 0xA155274Bu:
                 return "Tile";
-            case 1778381553u:
+            case 0xA281DB34u:
+                return "Tile Road";
+            case 0x69FFF2F1u:
                 return "UGC";
-            case 3525010870u:
+            case 0xD21B65B6u:
                 return "Water";
-            case 3944822072u:
+            case 0xEB213538u:
                 return "Wood";
+            case 0x5E35B65Fu:
+                return "Wood Road";
         }
 
         if (hash == _waterHash)
@@ -3855,8 +3914,65 @@ public partial class MainWindow : Window
         return "Unknown";
     }
 
+    private static IReadOnlyList<uint> GetKnownTileHashes()
+    {
+        return
+        [
+            0x5E52F4DEu, 0x91DFA1EAu, 0xD7E5E4E0u, 0xDE578684u, 0xB6D76A62u, 0x54AE7E98u,
+            0xD1B37F49u, 0xA27341EDu, 0xAFA5B5ABu, 0xB019EFF9u, 0xA442959Eu, 0xCF83CF1Fu,
+            0x318904D8u, 0x8A58EB7Du, 0x923CFBD7u, 0x3948DC33u, 0x8698C8B7u, 0xFF4AE68Au,
+            0x2EF21057u, 0x1FB9379Du, 0x8B39F8D2u, 0xA4AFD856u, 0xCA11E25Au, 0x17EE09E8u,
+            0x122A7D23u, 0x2B9B8582u, 0xB53F5F3Du, 0x47F627BDu, 0xE9473287u, 0x9999D173u,
+            0x62F90493u, 0x10F7EE55u, 0xC67A3C6Cu, 0xA155274Bu, 0xA281DB34u, 0x69FFF2F1u,
+            0xD21B65B6u, 0xEB213538u, 0x5E35B65Fu
+        ];
+    }
+
     private Color ResolveSemanticTileColor(uint hash)
     {
+        switch (hash)
+        {
+            case 0x5E52F4DEu: return Color.Parse("#A3917A");
+            case 0x91DFA1EAu: return Color.Parse("#8D7564");
+            case 0xD7E5E4E0u: return Color.Parse("#3C4147");
+            case 0xDE578684u: return Color.Parse("#2A2E33");
+            case 0xB6D76A62u: return Color.Parse("#E4CC9A");
+            case 0xB53F5F3Du: return Color.Parse("#3A6EA7");
+            case 0xA27341EDu: return Color.Parse("#5E9E4A");
+            case 0xAFA5B5ABu: return Color.Parse("#4A8F56");
+            case 0xB019EFF9u: return Color.Parse("#7A8088");
+            case 0xA442959Eu: return Color.Parse("#6A7380");
+            case 0xCF83CF1Fu: return Color.Parse("#F2F2F2");
+            case 0x318904D8u: return Color.Parse("#D0D0D0");
+            case 0x54AE7E98u: return Color.Parse("#EFA7C8");
+            case 0xD1B37F49u: return Color.Parse("#DB7DB0");
+            case 0xFF4AE68Au: return Color.Parse("#67B86A");
+            case 0x2EF21057u: return Color.Parse("#4D9B59");
+            case 0x8A58EB7Du: return Color.Parse("#B66A3A");
+            case 0x923CFBD7u: return Color.Parse("#A15E3A");
+            case 0x3948DC33u: return Color.Parse("#D9B23B");
+            case 0x8698C8B7u: return Color.Parse("#C19B34");
+            case 0x1FB9379Du: return Color.Parse("#8A8F99");
+            case 0x8B39F8D2u: return Color.Parse("#6C7483");
+            case 0xA4AFD856u: return Color.Parse("#9A958A");
+            case 0xCA11E25Au: return Color.Parse("#878072");
+            case 0x17EE09E8u: return Color.Parse("#E05A5A");
+            case 0x9999D173u: return Color.Parse("#8B5A2B");
+            case 0x62F90493u: return Color.Parse("#70502D");
+            case 0x122A7D23u: return Color.Parse("#D8C089");
+            case 0x2B9B8582u: return Color.Parse("#CCB27D");
+            case 0x47F627BDu: return Color.Parse("#E9F3FF");
+            case 0xE9473287u: return Color.Parse("#DCE7F2");
+            case 0x10F7EE55u: return Color.Parse("#87817A");
+            case 0xC67A3C6Cu: return Color.Parse("#7A746D");
+            case 0xA155274Bu: return Color.Parse("#B8B5C9");
+            case 0xA281DB34u: return Color.Parse("#A9A5BE");
+            case 0x69FFF2F1u: return Color.Parse("#C06BFF");
+            case 0xD21B65B6u: return Color.Parse("#4A90E2");
+            case 0xEB213538u: return Color.Parse("#9B6B3D");
+            case 0x5E35B65Fu: return Color.Parse("#8A603B");
+        }
+
         var name = ResolveFloorName(hash).ToLowerInvariant();
         if (hash == _waterHash || name.Contains("water"))
         {

@@ -17,14 +17,14 @@ build_property.PlatformNeutralAssembly =
 build_property.EnforceExtendedAnalyzerRules = 
 build_property._SupportedPlatformList = Linux,macOS,Windows
 build_property.RootNamespace = MapIslandEditor
-build_property.ProjectDir = Y:\[] Emulators\[] Extracted-Files\tomodachilife\MapIslandEditor\
+build_property.ProjectDir = C:\Users\zach\Documents\GitHub\ltd-islandeditor\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
 build_property.EffectiveAnalysisLevelStyle = 8.0
 build_property.EnableCodeStyleSeverity = 
 
-[Y:/\[\] Emulators/\[\] Extracted-Files/tomodachilife/MapIslandEditor/App.axaml]
+[C:/Users/zach/Documents/GitHub/ltd-islandeditor/App.axaml]
 build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
 
-[Y:/\[\] Emulators/\[\] Extracted-Files/tomodachilife/MapIslandEditor/MainWindow.axaml]
+[C:/Users/zach/Documents/GitHub/ltd-islandeditor/MainWindow.axaml]
 build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml

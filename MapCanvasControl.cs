@@ -24,6 +24,7 @@ public sealed class MapCanvasControl : Control
     private readonly SolidColorBrush _tileBorderBrush = new(Color.Parse("#1f2a36"));
     private readonly SolidColorBrush _iconTextBrush = new(Color.Parse("#101010"));
     private readonly SolidColorBrush _objectStrokeBrush = new(Color.Parse("#20150a"));
+    private readonly SolidColorBrush _objectFillBrush = new(Color.Parse("#ff8b3d"));
     private readonly Pen _tileBorderPen;
     private readonly Pen _objectStrokePen;
     private readonly Pen _selectedObjectPen;
@@ -40,6 +41,11 @@ public sealed class MapCanvasControl : Control
     private bool _pointerDown;
     private bool _draggingObject;
     private bool _paintingTiles;
+    private bool _tileRectSelecting;
+    private int _tileRectStartX = -1;
+    private int _tileRectStartY = -1;
+    private int _tileRectEndX = -1;
+    private int _tileRectEndY = -1;
     private int _dragObjectIndex = -1;
     private int _dragStartX;
     private int _dragStartY;
@@ -53,6 +59,7 @@ public sealed class MapCanvasControl : Control
     private uint _landHash;
     private uint _waterHash;
     private Dictionary<uint, IBrush> _tileBrushByHash = [];
+    private readonly Dictionary<uint, IBrush> _generatedTileBrushCache = [];
 
     public event EventHandler<MapObjectMovedEventArgs>? ObjectMoved;
     public event EventHandler<ObjectSelectedEventArgs>? ObjectSelected;
@@ -103,6 +110,11 @@ public sealed class MapCanvasControl : Control
         _nameResolver = nameResolver;
         _draggingObject = false;
         _paintingTiles = false;
+        _tileRectSelecting = false;
+        _tileRectStartX = -1;
+        _tileRectStartY = -1;
+        _tileRectEndX = -1;
+        _tileRectEndY = -1;
         _dragObjectIndex = -1;
         _pointerDown = false;
         _selectedObjectIndex = -1;
@@ -124,6 +136,7 @@ public sealed class MapCanvasControl : Control
         _tileBrushByHash = colors.ToDictionary(
             kv => kv.Key,
             kv => (IBrush)new SolidColorBrush(kv.Value));
+        _generatedTileBrushCache.Clear();
         InvalidateVisual();
     }
 
@@ -204,7 +217,26 @@ public sealed class MapCanvasControl : Control
         {
             TilePaintStrokeStarted?.Invoke(this, EventArgs.Empty);
             _paintingTiles = true;
-            TryPaintTileAtPoint(_lastPointer);
+            _tileRectSelecting = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            if (_tileRectSelecting)
+            {
+                if (TryGetGridAtPointClamped(_lastPointer, out var startX, out var startY))
+                {
+                    _tileRectStartX = startX;
+                    _tileRectStartY = startY;
+                    _tileRectEndX = startX;
+                    _tileRectEndY = startY;
+                }
+            }
+            else
+            {
+                _tileRectStartX = -1;
+                _tileRectStartY = -1;
+                _tileRectEndX = -1;
+                _tileRectEndY = -1;
+                TryPaintTileAtPoint(_lastPointer);
+            }
+            InvalidateVisual();
             e.Pointer.Capture(this);
             e.Handled = true;
             return;
@@ -250,10 +282,19 @@ public sealed class MapCanvasControl : Control
 
         if (_paintingTiles)
         {
-            if (TryPaintTileAtPoint(position))
+            if (_tileRectSelecting)
             {
+                if (TryGetGridAtPointClamped(position, out var endX, out var endY))
+                {
+                    _tileRectEndX = endX;
+                    _tileRectEndY = endY;
+                }
                 InvalidateVisual();
+                return;
             }
+
+            TryPaintTileAtPoint(position);
+            InvalidateVisual();
             return;
         }
 
@@ -294,9 +335,21 @@ public sealed class MapCanvasControl : Control
         _draggingObject = false;
         if (_paintingTiles)
         {
+            if (_tileRectSelecting)
+            {
+                if (TryPaintTileRect())
+                {
+                    TilePainted?.Invoke(this, EventArgs.Empty);
+                }
+            }
             TilePaintStrokeCompleted?.Invoke(this, EventArgs.Empty);
         }
         _paintingTiles = false;
+        _tileRectSelecting = false;
+        _tileRectStartX = -1;
+        _tileRectStartY = -1;
+        _tileRectEndX = -1;
+        _tileRectEndY = -1;
         _dragObjectIndex = -1;
         e.Pointer.Capture(null);
         UpdateCursor();
@@ -351,24 +404,30 @@ public sealed class MapCanvasControl : Control
             return;
         }
 
+        var effectiveStep = GetRenderTileStep();
         var halfWidth = _map.Width * 0.5;
         var halfHeight = _map.Height * 0.5;
-        var worldCell = BaseCellSize * _tileStep;
+        var worldCell = BaseCellSize * effectiveStep;
         var drawSize = Math.Max(1, worldCell * _zoom);
         var halfDraw = drawSize * 0.5;
+        var drawBorder = drawSize >= 6;
+        GetVisibleGridBounds(_map, out var minX, out var maxX, out var minY, out var maxY);
+        minX = AlignDownToStep(minX, effectiveStep);
+        minY = AlignDownToStep(minY, effectiveStep);
 
-        for (var y = 0; y < _map.Height; y += _tileStep)
+        for (var y = minY; y <= maxY; y += effectiveStep)
         {
-            for (var x = 0; x < _map.Width; x += _tileStep)
+            for (var x = minX; x <= maxX; x += effectiveStep)
             {
                 var hash = _map.Grid[x, y];
-                var brush = _tileBrushByHash.TryGetValue(hash, out var semanticBrush)
-                    ? semanticBrush
-                    : new SolidColorBrush(Color.Parse(HashToColor(hash)));
+                var brush = GetTileBrush(hash);
                 var p = WorldToScreen((x - halfWidth) * BaseCellSize, (y - halfHeight) * BaseCellSize);
                 var rect = new Rect(p.X - halfDraw, p.Y - halfDraw, drawSize, drawSize);
                 context.DrawRectangle(brush, null, rect);
-                context.DrawRectangle(null, _tileBorderPen, rect);
+                if (drawBorder)
+                {
+                    context.DrawRectangle(null, _tileBorderPen, rect);
+                }
             }
         }
     }
@@ -393,7 +452,7 @@ public sealed class MapCanvasControl : Control
             var p = WorldToScreen(px, pz);
             var rect = new Rect(p.X - radius, p.Y - radius, diameter, diameter);
 
-            context.DrawEllipse(new SolidColorBrush(Color.Parse("#ff8b3d")), _objectStrokePen, rect.Center, radius, radius);
+            context.DrawEllipse(_objectFillBrush, _objectStrokePen, rect.Center, radius, radius);
             if (i == _selectedObjectIndex)
             {
                 context.DrawEllipse(null, _selectedObjectPen, rect.Center, radius + 2, radius + 2);
@@ -425,6 +484,11 @@ public sealed class MapCanvasControl : Control
             return;
         }
 
+        if (_zoom < 0.12)
+        {
+            return;
+        }
+
         var halfWidth = _map.Width * 0.5;
         var halfHeight = _map.Height * 0.5;
         var topZ = -halfHeight * BaseCellSize;
@@ -439,8 +503,15 @@ public sealed class MapCanvasControl : Control
         }
 
         var majorTiles = minorTiles * 4;
+        GetVisibleGridBounds(_map, out var minX, out var maxX, out var minY, out var maxY);
+        minX = AlignDownToStep(minX, minorTiles);
+        minY = AlignDownToStep(minY, minorTiles);
+        maxX = Math.Min(_map.Width - 1, maxX + minorTiles);
+        maxY = Math.Min(_map.Height - 1, maxY + minorTiles);
+        var majorMinX = AlignDownToStep(minX, majorTiles);
+        var majorMinY = AlignDownToStep(minY, majorTiles);
 
-        for (var x = 0; x < _map.Width; x += minorTiles)
+        for (var x = minX; x <= maxX; x += minorTiles)
         {
             var worldX = (x - halfWidth) * BaseCellSize;
             var top = WorldToScreen(worldX, topZ);
@@ -448,7 +519,7 @@ public sealed class MapCanvasControl : Control
             context.DrawLine(_coordMinorPen, top, bottom);
         }
 
-        for (var y = 0; y < _map.Height; y += minorTiles)
+        for (var y = minY; y <= maxY; y += minorTiles)
         {
             var worldZ = (y - halfHeight) * BaseCellSize;
             var left = WorldToScreen(leftX, worldZ);
@@ -466,7 +537,7 @@ public sealed class MapCanvasControl : Control
         var labelY = 4.0;
         var labelX = 6.0;
 
-        for (var x = 0; x < _map.Width; x += majorTiles)
+        for (var x = majorMinX; x <= maxX; x += majorTiles)
         {
             var coord = x;
             var point = WorldToScreen((x - halfWidth) * BaseCellSize, 0);
@@ -486,7 +557,7 @@ public sealed class MapCanvasControl : Control
             context.DrawText(text, new Point(point.X - text.Width * 0.5, labelY));
         }
 
-        for (var y = 0; y < _map.Height; y += majorTiles)
+        for (var y = majorMinY; y <= maxY; y += majorTiles)
         {
             var coord = y;
             var point = WorldToScreen(0, (y - halfHeight) * BaseCellSize);
@@ -577,6 +648,37 @@ public sealed class MapCanvasControl : Control
         return true;
     }
 
+    private bool TryPaintTileRect()
+    {
+        if (_map is null || _tileRectStartX < 0 || _tileRectStartY < 0 || _tileRectEndX < 0 || _tileRectEndY < 0)
+        {
+            return false;
+        }
+
+        var minX = Math.Min(_tileRectStartX, _tileRectEndX);
+        var maxX = Math.Max(_tileRectStartX, _tileRectEndX);
+        var minY = Math.Min(_tileRectStartY, _tileRectEndY);
+        var maxY = Math.Max(_tileRectStartY, _tileRectEndY);
+        var target = EditMode == MapEditMode.AddLand ? _landHash : _waterHash;
+        var changed = false;
+
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = minX; x <= maxX; x++)
+            {
+                if (_map.Grid[x, y] == target)
+                {
+                    continue;
+                }
+
+                _map.Grid[x, y] = target;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
     private bool TryGetGridAtPoint(Point point, out int gx, out int gy)
     {
         gx = -1;
@@ -594,6 +696,25 @@ public sealed class MapCanvasControl : Control
         return gx >= 0 && gy >= 0 && gx < _map.Width && gy < _map.Height;
     }
 
+    private bool TryGetGridAtPointClamped(Point point, out int gx, out int gy)
+    {
+        gx = -1;
+        gy = -1;
+        if (_map is null)
+        {
+            return false;
+        }
+
+        var world = ScreenToWorld(point);
+        var halfWidth = _map.Width * 0.5;
+        var halfHeight = _map.Height * 0.5;
+        gx = (int)Math.Round(world.X / BaseCellSize + halfWidth);
+        gy = (int)Math.Round(world.Y / BaseCellSize + halfHeight);
+        gx = Math.Clamp(gx, 0, _map.Width - 1);
+        gy = Math.Clamp(gy, 0, _map.Height - 1);
+        return true;
+    }
+
     private bool TryGetTileCenterAtPoint(Point point, out Point center, out int gx, out int gy)
     {
         center = default;
@@ -608,6 +729,25 @@ public sealed class MapCanvasControl : Control
         return true;
     }
 
+    private Rect GetTileRectScreenBounds(int minX, int maxX, int minY, int maxY)
+    {
+        if (_map is null)
+        {
+            return new Rect();
+        }
+
+        var halfWidth = _map.Width * 0.5;
+        var halfHeight = _map.Height * 0.5;
+        var topLeft = WorldToScreen((minX - halfWidth) * BaseCellSize, (minY - halfHeight) * BaseCellSize);
+        var bottomRight = WorldToScreen((maxX - halfWidth) * BaseCellSize, (maxY - halfHeight) * BaseCellSize);
+        var cellSize = BaseCellSize * _zoom;
+        var left = Math.Min(topLeft.X, bottomRight.X) - cellSize * 0.5;
+        var top = Math.Min(topLeft.Y, bottomRight.Y) - cellSize * 0.5;
+        var right = Math.Max(topLeft.X, bottomRight.X) + cellSize * 0.5;
+        var bottom = Math.Max(topLeft.Y, bottomRight.Y) + cellSize * 0.5;
+        return new Rect(new Point(left, top), new Point(right, bottom));
+    }
+
     private void RenderModeOverlay(DrawingContext context)
     {
         if (_map is null || !_hasHoverPointer)
@@ -617,9 +757,20 @@ public sealed class MapCanvasControl : Control
 
         if (EditMode is MapEditMode.AddLand or MapEditMode.DeleteLand)
         {
-            if (!TryGetTileCenterAtPoint(_hoverPointer, out var center, out _, out _))
+            if (_tileRectSelecting && _tileRectStartX >= 0 && _tileRectStartY >= 0 && _tileRectEndX >= 0 && _tileRectEndY >= 0)
             {
-                return;
+                var minX = Math.Min(_tileRectStartX, _tileRectEndX);
+                var maxX = Math.Max(_tileRectStartX, _tileRectEndX);
+                var minY = Math.Min(_tileRectStartY, _tileRectEndY);
+                var maxY = Math.Max(_tileRectStartY, _tileRectEndY);
+                var rect = GetTileRectScreenBounds(minX, maxX, minY, maxY);
+                var stroke = EditMode == MapEditMode.AddLand
+                    ? new Pen(new SolidColorBrush(Color.Parse("#CC00E676")), 2)
+                    : new Pen(new SolidColorBrush(Color.Parse("#CCD50000")), 2);
+                var rectFill = EditMode == MapEditMode.AddLand
+                    ? new SolidColorBrush(Color.Parse("#3300E676"))
+                    : new SolidColorBrush(Color.Parse("#33D50000"));
+                context.DrawRectangle(rectFill, stroke, rect);
             }
 
             var radius = Math.Max(8, BaseCellSize * _zoom * 0.8);
@@ -627,7 +778,6 @@ public sealed class MapCanvasControl : Control
                 ? new SolidColorBrush(Color.Parse("#6600C853"))
                 : new SolidColorBrush(Color.Parse("#66D50000"));
             var symbol = EditMode == MapEditMode.AddLand ? "+" : "-";
-            context.DrawEllipse(fill, _moveGizmoPen, center, radius, radius);
             var text = new FormattedText(
                 symbol,
                 CultureInfo.InvariantCulture,
@@ -635,7 +785,8 @@ public sealed class MapCanvasControl : Control
                 _typeface,
                 Math.Max(12, radius),
                 Brushes.White);
-            context.DrawText(text, new Point(center.X - text.Width * 0.5, center.Y - text.Height * 0.5));
+            context.DrawEllipse(fill, _moveGizmoPen, _hoverPointer, radius, radius);
+            context.DrawText(text, new Point(_hoverPointer.X - text.Width * 0.5, _hoverPointer.Y - text.Height * 0.5));
             return;
         }
 
@@ -698,6 +849,63 @@ public sealed class MapCanvasControl : Control
     private static double Clamp(double value, double min, double max)
     {
         return Math.Max(min, Math.Min(max, value));
+    }
+
+    private IBrush GetTileBrush(uint hash)
+    {
+        if (_tileBrushByHash.TryGetValue(hash, out var semanticBrush))
+        {
+            return semanticBrush;
+        }
+
+        if (_generatedTileBrushCache.TryGetValue(hash, out var cached))
+        {
+            return cached;
+        }
+
+        var created = (IBrush)new SolidColorBrush(Color.Parse(HashToColor(hash)));
+        _generatedTileBrushCache[hash] = created;
+        return created;
+    }
+
+    private int GetRenderTileStep()
+    {
+        var step = _tileStep;
+        var pixelsPerTile = BaseCellSize * _zoom * _tileStep;
+        if (pixelsPerTile < 1.5)
+        {
+            step = Math.Max(step, _tileStep * 4);
+        }
+        else if (pixelsPerTile < 2.5)
+        {
+            step = Math.Max(step, _tileStep * 2);
+        }
+
+        return Math.Max(1, step);
+    }
+
+    private void GetVisibleGridBounds(MapProject map, out int minX, out int maxX, out int minY, out int maxY)
+    {
+        var leftWorld = (0 - Bounds.Width * 0.5 - _panX) / _zoom;
+        var rightWorld = (Bounds.Width - Bounds.Width * 0.5 - _panX) / _zoom;
+        var topWorld = (0 - Bounds.Height * 0.5 - _panY) / _zoom;
+        var bottomWorld = (Bounds.Height - Bounds.Height * 0.5 - _panY) / _zoom;
+        var halfWidth = map.Width * 0.5;
+        var halfHeight = map.Height * 0.5;
+        minX = Math.Clamp((int)Math.Floor(Math.Min(leftWorld, rightWorld) / BaseCellSize + halfWidth) - 2, 0, map.Width - 1);
+        maxX = Math.Clamp((int)Math.Ceiling(Math.Max(leftWorld, rightWorld) / BaseCellSize + halfWidth) + 2, 0, map.Width - 1);
+        minY = Math.Clamp((int)Math.Floor(Math.Min(topWorld, bottomWorld) / BaseCellSize + halfHeight) - 2, 0, map.Height - 1);
+        maxY = Math.Clamp((int)Math.Ceiling(Math.Max(topWorld, bottomWorld) / BaseCellSize + halfHeight) + 2, 0, map.Height - 1);
+    }
+
+    private static int AlignDownToStep(int value, int step)
+    {
+        if (step <= 1)
+        {
+            return value;
+        }
+
+        return value - (value % step);
     }
 
     private void UpdateCursor()

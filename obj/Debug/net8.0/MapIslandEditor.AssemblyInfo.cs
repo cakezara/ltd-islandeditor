@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MapIslandEditor")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+902476f671c953e1dbf5a27a2c43af74e5d9e5b8")]
 [assembly: System.Reflection.AssemblyProductAttribute("MapIslandEditor")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MapIslandEditor")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
