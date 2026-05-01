@@ -29,9 +29,22 @@
         <TextBlock x:Name="MapInfoText" Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,12" Foreground="#FFE4E4E4" FontSize="11" />
         <TextBlock Grid.Row="1" Text="Edit Mode" FontWeight="SemiBold" Margin="0,4,0,6" Foreground="#FFF6F6F6" />
         <WrapPanel Grid.Row="2" Orientation="Horizontal">
-          <Button x:Name="MoveObjectsButton" Content="Move Objects" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
-          <Button x:Name="AddLandButton" Content="Add Tile" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
-          <Button x:Name="DeleteLandButton" Content="Delete Tiles" Padding="10,4" FontSize="11" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+          <Button x:Name="MoveObjectsButton" Width="36" Height="30" Padding="0" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A" ToolTip.Tip="Move objects">
+            <Path Width="14" Height="14" Stretch="Uniform" Stroke="#FF1A1A1A" StrokeThickness="1.6" Data="M7 1 L7 13 M1 7 L13 7 M7 1 L5 3 M7 1 L9 3 M7 13 L5 11 M7 13 L9 11 M1 7 L3 5 M1 7 L3 9 M13 7 L11 5 M13 7 L11 9"/>
+          </Button>
+          <Button x:Name="AddLandButton" Width="36" Height="30" Padding="0" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A" ToolTip.Tip="Add tile paint">
+            <Path Width="14" Height="14" Stretch="Uniform" Stroke="#FF1A1A1A" StrokeThickness="1.6" Data="M2 2 H12 V12 H2 Z M7 4 V10 M4 7 H10"/>
+          </Button>
+          <Button x:Name="DeleteLandButton" Width="36" Height="30" Padding="0" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A" ToolTip.Tip="Delete tile paint">
+            <Path Width="14" Height="14" Stretch="Uniform" Stroke="#FF1A1A1A" StrokeThickness="1.6" Data="M2 2 H12 V12 H2 Z M4 7 H10"/>
+          </Button>
+          <Button x:Name="FillLandButton" Width="36" Height="30" Padding="0" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A" ToolTip.Tip="Fill connected tiles">
+            <Path Width="14" Height="14" Stretch="Uniform" Stroke="#FF1A1A1A" StrokeThickness="1.6" Data="M3 6 L7 2 L12 7 L8 11 Z M2 12 H9"/>
+          </Button>
+          <Button x:Name="MoveTileButton" Width="36" Height="30" Padding="0" Margin="0,0,6,6" Background="#FFFFB30F" Foreground="#FF1A1A1A" ToolTip.Tip="Move selected tiles">
+            <Path Width="14" Height="14" Stretch="Uniform" Stroke="#FF1A1A1A" StrokeThickness="1.6" Data="M2 3 H12 V11 H2 Z M2 7 H12 M7 3 V11 M1 7 L3 5 M1 7 L3 9 M13 7 L11 5 M13 7 L11 9"/>
+          </Button>
+          <TextBlock x:Name="EditModeTitleText" Margin="4,0,10,6" VerticalAlignment="Center" FontSize="11" Foreground="#FFF6F6F6" Text="Move Object"/>
           <Button x:Name="DebugImportTilesButton" Content="Image Import" IsVisible="False" Padding="10,4" FontSize="10" Margin="0,0,6,6" Background="#FF4A4A4A" Foreground="#FFF0F0F0" BorderBrush="#FFFFB30F"/>
         </WrapPanel>
         <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
@@ -73,7 +86,7 @@
           </Grid>
         </Border>
         <TextBlock Grid.Row="7" Margin="0,4,0,10" TextWrapping="Wrap" Foreground="#FFCACACA" FontSize="10"
-                   Text="Controls: Arrow keys move camera | +/- zoom | Delete removes selected object | Ctrl/Cmd+Z undo | Ctrl/Cmd+Shift+Z redo | Mouse wheel zoom | Drag object to move | Shift+drag in Add/Delete Tile draws a box selection"/>
+                   Text="Controls: Arrow keys move camera | +/- zoom | Delete removes selected object | Ctrl/Cmd+Z undo | Ctrl/Cmd+Shift+Z redo | Mouse wheel zoom | Drag object to move | Shift+drag in Add/Delete Tile draws a box selection | Fill mode: click to flood connected tiles | Move tile mode: drag to select, then use arrow keys to move"/>
       </Grid>
 
       <Grid Grid.Row="1" Grid.Column="1" Margin="0,12,0,0" Background="#FF2A2A2A">
@@ -96,10 +109,11 @@
               <Border Grid.Row="2" Grid.Column="1" Margin="10,0,0,0" Background="#FF343434" BorderBrush="#FF4A4A4A" BorderThickness="1" Padding="8,8,8,6">
                 <Grid RowDefinitions="Auto,*">
                   <TextBlock Text="Objects" FontWeight="SemiBold" Foreground="#FFF6F6F6" Margin="2,0,0,6"/>
-                  <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" Margin="0,6,0,0">
-                    <Button x:Name="DeleteObjectButton" Content="Delete" HorizontalAlignment="Stretch" Padding="10,4" FontSize="11" Margin="0,0,0,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
-                    <TextBlock Grid.Row="1" Text="Shift: range select | Ctrl/Cmd: multi-select" FontSize="10" Foreground="#FFCACACA" Margin="2,0,0,4"/>
-                    <ListBox x:Name="ObjectList" Grid.Row="2" SelectionMode="Multiple" Background="#FF2F2F2F" BorderBrush="#FF4A4A4A" FontSize="10" Foreground="#FFF0F0F0"/>
+                  <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*" Margin="0,6,0,0">
+                    <CheckBox x:Name="ShowObjectsCheckBox" Grid.Row="0" Content="Show objects on map" IsChecked="True" Foreground="#FFE0E0E0" FontSize="10" Margin="2,0,0,6"/>
+                    <Button x:Name="DeleteObjectButton" Grid.Row="1" Content="Delete" HorizontalAlignment="Stretch" Padding="10,4" FontSize="11" Margin="0,0,0,6" Background="#FFFFB30F" Foreground="#FF1A1A1A"/>
+                    <TextBlock Grid.Row="2" Text="Shift: range select | Ctrl/Cmd: multi-select" FontSize="10" Foreground="#FFCACACA" Margin="2,0,0,4"/>
+                    <ListBox x:Name="ObjectList" Grid.Row="3" SelectionMode="Multiple" Background="#FF2F2F2F" BorderBrush="#FF4A4A4A" FontSize="10" Foreground="#FFF0F0F0"/>
                   </Grid>
                 </Grid>
               </Border>

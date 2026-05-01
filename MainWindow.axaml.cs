@@ -73,6 +73,8 @@ public partial class MainWindow : Window
     private readonly Button _moveObjectsButton;
     private readonly Button _addLandButton;
     private readonly Button _deleteLandButton;
+    private readonly Button _fillLandButton;
+    private readonly Button _moveTileButton;
     private readonly Button _debugImportTilesButton;
     private readonly Button _debugChooseImageButton;
     private readonly Button _debugApplyImageImportButton;
@@ -88,10 +90,12 @@ public partial class MainWindow : Window
     private readonly Button _zoomIn2DButton;
     private readonly Button _zoomOut2DButton;
     private readonly Button _resetView2DButton;
+    private readonly CheckBox _showObjectsCheckBox;
     private readonly ComboBox _paintTileTypeCombo;
     private readonly ComboBox _debugImageSizingCombo;
     private readonly TextBox _rootPathText;
     private readonly TextBlock _mapInfoText;
+    private readonly TextBlock _editModeTitleText;
     private readonly TextBlock _viewerInfoText;
     private readonly TextBlock _threeDStatusText;
     private readonly TextBlock _statusText;
@@ -173,6 +177,15 @@ public partial class MainWindow : Window
     private int _debugImportWidth;
     private int _debugImportHeight;
     private string _debugImportImagePath = string.Empty;
+    private bool _moveTileSessionReady;
+    private bool _suppressMoveTileSelectionChange;
+    private MapEditSnapshot? _moveTileBaseSnapshot;
+    private uint[,]? _moveTilePayloadGrid;
+    private List<MoveTileObjectPayload> _moveTilePayloadObjects = [];
+    private int _moveTileOriginMinX = -1;
+    private int _moveTileOriginMaxX = -1;
+    private int _moveTileOriginMinY = -1;
+    private int _moveTileOriginMaxY = -1;
 
     private sealed class MapEditSnapshot
     {
@@ -204,6 +217,13 @@ public partial class MainWindow : Window
         {
             return $"{Name} ({Hash}) x{Count}";
         }
+    }
+
+    private sealed class MoveTileObjectPayload
+    {
+        public required MapObjectEntry Object { get; init; }
+        public required int OffsetX { get; init; }
+        public required int OffsetY { get; init; }
     }
 
     private sealed class ObjectCatalogOption
@@ -270,6 +290,8 @@ public partial class MainWindow : Window
         _moveObjectsButton = this.FindControl<Button>("MoveObjectsButton")!;
         _addLandButton = this.FindControl<Button>("AddLandButton")!;
         _deleteLandButton = this.FindControl<Button>("DeleteLandButton")!;
+        _fillLandButton = this.FindControl<Button>("FillLandButton")!;
+        _moveTileButton = this.FindControl<Button>("MoveTileButton")!;
         _load3DButton = this.FindControl<Button>("Load3DButton")!;
         _applyMapSavValueButton = this.FindControl<Button>("ApplyMapSavValueButton")!;
         _panLeft2DButton = this.FindControl<Button>("PanLeft2DButton")!;
@@ -279,6 +301,7 @@ public partial class MainWindow : Window
         _zoomIn2DButton = this.FindControl<Button>("ZoomIn2DButton")!;
         _zoomOut2DButton = this.FindControl<Button>("ZoomOut2DButton")!;
         _resetView2DButton = this.FindControl<Button>("ResetView2DButton")!;
+        _showObjectsCheckBox = this.FindControl<CheckBox>("ShowObjectsCheckBox")!;
         _paintTileTypeCombo = this.FindControl<ComboBox>("PaintTileTypeCombo")!;
         _debugImportTilesButton = this.FindControl<Button>("DebugImportTilesButton")!;
         _debugChooseImageButton = this.FindControl<Button>("DebugChooseImageButton")!;
@@ -289,6 +312,7 @@ public partial class MainWindow : Window
         _debugImageSizingCombo = this.FindControl<ComboBox>("DebugImageSizingCombo")!;
         _rootPathText = this.FindControl<TextBox>("RootPathText")!;
         _mapInfoText = this.FindControl<TextBlock>("MapInfoText")!;
+        _editModeTitleText = this.FindControl<TextBlock>("EditModeTitleText")!;
         _viewerInfoText = this.FindControl<TextBlock>("ViewerInfoText")!;
         _threeDStatusText = this.FindControl<TextBlock>("ThreeDStatusText")!;
         _statusText = this.FindControl<TextBlock>("StatusText")!;
@@ -339,6 +363,9 @@ public partial class MainWindow : Window
         };
         _debugImageSizingCombo.SelectedIndex = 0;
         _addObjectFromCatalogButton.IsEnabled = false;
+        _objectNameLookup = MapRepository.GetBuiltInActorNameLookup();
+        RebuildObjectCatalog();
+        _mapCanvas.ShowObjects = _showObjectsCheckBox.IsChecked != false;
         _versionNumber = ReadVersionNumber();
         _isDebugMode = string.Equals(_versionNumber, DebugVersionToken, StringComparison.Ordinal);
         LoadUserPreferences();
@@ -375,6 +402,8 @@ public partial class MainWindow : Window
         _moveObjectsButton.Click += MoveObjectsButtonOnClick;
         _addLandButton.Click += AddLandButtonOnClick;
         _deleteLandButton.Click += DeleteLandButtonOnClick;
+        _fillLandButton.Click += FillLandButtonOnClick;
+        _moveTileButton.Click += MoveTileButtonOnClick;
         _debugImportTilesButton.Click += DebugImportTilesButtonOnClick;
         _debugChooseImageButton.Click += DebugChooseImageButtonOnClick;
         _debugApplyImageImportButton.Click += DebugApplyImageImportButtonOnClick;
@@ -391,6 +420,8 @@ public partial class MainWindow : Window
         _zoomIn2DButton.Click += (_, _) => _mapCanvas.ZoomBy(1.15);
         _zoomOut2DButton.Click += (_, _) => _mapCanvas.ZoomBy(0.87);
         _resetView2DButton.Click += (_, _) => _mapCanvas.ResetView();
+        _showObjectsCheckBox.Checked += ShowObjectsCheckBoxOnChanged;
+        _showObjectsCheckBox.Unchecked += ShowObjectsCheckBoxOnChanged;
         _paintTileTypeCombo.SelectionChanged += PaintTileTypeComboOnSelectionChanged;
         _objectList.SelectionChanged += ObjectListOnSelectionChanged;
         _objectList.PointerPressed += ObjectListOnPointerPressed;
@@ -946,6 +977,18 @@ public partial class MainWindow : Window
         }
     }
 
+    private static bool IsGameRootCandidate(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return false;
+        }
+
+        var hasMap = Directory.Exists(Path.Combine(path, "MapFile"));
+        var hasActor = Directory.Exists(Path.Combine(path, "Actor"));
+        return hasMap && hasActor;
+    }
+
     private async void BrowseMapSavButtonOnClick(object? sender, RoutedEventArgs e)
     {
         var top = GetTopLevel(this);
@@ -1044,11 +1087,39 @@ public partial class MainWindow : Window
 
     private void MapCanvasOnExternalRectSelectionChanged(object? sender, EventArgs e)
     {
+        if (_mapCanvas.EditMode == MapEditMode.MoveTile)
+        {
+            if (!_suppressMoveTileSelectionChange)
+            {
+                ResetMoveTileSession();
+            }
+
+            if (_mapCanvas.TryGetExternalRect(out var minX, out var maxX, out var minY, out var maxY))
+            {
+                _statusText.Text = $"Move tile selection: ({minX},{minY})-({maxX},{maxY}) {maxX - minX + 1}x{maxY - minY + 1}.";
+            }
+            else
+            {
+                _statusText.Text = "Move tile mode enabled. Drag to select tiles, then press arrow keys to move.";
+            }
+            return;
+        }
+
         UpdateDebugImportAreaText();
     }
 
     private void MapCanvasOnExternalRectSelectionCompleted(object? sender, EventArgs e)
     {
+        if (_mapCanvas.EditMode == MapEditMode.MoveTile)
+        {
+            ResetMoveTileSession();
+            if (_mapCanvas.TryGetExternalRect(out var minX, out var maxX, out var minY, out var maxY))
+            {
+                _statusText.Text = $"Selected {maxX - minX + 1}x{maxY - minY + 1} tiles. Press arrow keys to move.";
+            }
+            return;
+        }
+
         UpdateDebugImportAreaText();
         _mapCanvas.SetExternalRectSelectionMode(false);
         _statusText.Text = "Image import area selected.";
@@ -2534,19 +2605,13 @@ public partial class MainWindow : Window
             }
         }
 
-        var cwdRoot = FindRootByWalkingParents(Environment.CurrentDirectory);
-        if (!string.IsNullOrWhiteSpace(cwdRoot))
-        {
-            return cwdRoot;
-        }
-
         var fallback = candidates.FirstOrDefault();
         if (!string.IsNullOrWhiteSpace(fallback))
         {
             return fallback;
         }
-
-        return AppContext.BaseDirectory;
+ 
+        return string.Empty;
     }
 
     private static string? FindRootByWalkingParents(string path)
@@ -2554,12 +2619,21 @@ public partial class MainWindow : Window
         var dir = new DirectoryInfo(path);
         while (dir is not null)
         {
-            var hasModel = Directory.Exists(Path.Combine(dir.FullName, "Model"));
-            var hasMap = Directory.Exists(Path.Combine(dir.FullName, "MapFile"));
-            var hasTex = Directory.Exists(Path.Combine(dir.FullName, "Tex"));
-            if (hasModel && hasMap && hasTex)
+            if (IsGameRootCandidate(dir.FullName))
             {
                 return dir.FullName;
+            }
+
+            var romFs = Path.Combine(dir.FullName, "RomFS");
+            if (IsGameRootCandidate(romFs))
+            {
+                return romFs;
+            }
+
+            var romfs = Path.Combine(dir.FullName, "romfs");
+            if (IsGameRootCandidate(romfs))
+            {
+                return romfs;
             }
 
             dir = dir.Parent;
@@ -2821,6 +2895,7 @@ public partial class MainWindow : Window
 
     private void SelectMap(MapProject map)
     {
+        ResetMoveTileSession();
         _currentMap = map;
         _undoStack.Clear();
         _redoStack.Clear();
@@ -2875,9 +2950,25 @@ public partial class MainWindow : Window
         AddSelectedCatalogObject();
     }
 
+    private void ShowObjectsCheckBoxOnChanged(object? sender, RoutedEventArgs e)
+    {
+        _mapCanvas.ShowObjects = _showObjectsCheckBox.IsChecked != false;
+    }
+
     private void RebuildObjectCatalog()
     {
-        _allObjectCatalogOptions = _objectNameLookup
+        if (_objectNameLookup.Count == 0)
+        {
+            _objectNameLookup = MapRepository.GetBuiltInActorNameLookup();
+        }
+
+        var catalogSource = _objectNameLookup;
+        if (catalogSource.Count == 0)
+        {
+            catalogSource = MapRepository.GetBuiltInActorNameLookup();
+        }
+
+        _allObjectCatalogOptions = catalogSource
             .Where(kv => kv.Value.Count > 0)
             .Select(kv => new ObjectCatalogOption
             {
@@ -3095,21 +3186,49 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Left)
         {
+            if (_mapCanvas.EditMode == MapEditMode.MoveTile)
+            {
+                MoveSelectedTileRect(-1, 0);
+                e.Handled = true;
+                return;
+            }
+
             _mapCanvas.PanBy(24, 0);
             e.Handled = true;
         }
         else if (e.Key == Key.Right)
         {
+            if (_mapCanvas.EditMode == MapEditMode.MoveTile)
+            {
+                MoveSelectedTileRect(1, 0);
+                e.Handled = true;
+                return;
+            }
+
             _mapCanvas.PanBy(-24, 0);
             e.Handled = true;
         }
         else if (e.Key == Key.Up)
         {
+            if (_mapCanvas.EditMode == MapEditMode.MoveTile)
+            {
+                MoveSelectedTileRect(0, -1);
+                e.Handled = true;
+                return;
+            }
+
             _mapCanvas.PanBy(0, 24);
             e.Handled = true;
         }
         else if (e.Key == Key.Down)
         {
+            if (_mapCanvas.EditMode == MapEditMode.MoveTile)
+            {
+                MoveSelectedTileRect(0, 1);
+                e.Handled = true;
+                return;
+            }
+
             _mapCanvas.PanBy(0, -24);
             e.Handled = true;
         }
@@ -3174,23 +3293,227 @@ public partial class MainWindow : Window
 
     private void MoveObjectsButtonOnClick(object? sender, RoutedEventArgs e)
     {
+        ResetMoveTileSession();
         _mapCanvas.EditMode = MapEditMode.MoveObjects;
+        _mapCanvas.SetExternalRectSelectionMode(false);
+        _mapCanvas.ClearExternalRectSelection();
         UpdateEditModeButtons();
         _statusText.Text = "Move mode enabled.";
     }
 
     private void AddLandButtonOnClick(object? sender, RoutedEventArgs e)
     {
+        ResetMoveTileSession();
         _mapCanvas.EditMode = MapEditMode.AddLand;
+        _mapCanvas.SetExternalRectSelectionMode(false);
+        _mapCanvas.ClearExternalRectSelection();
         UpdateEditModeButtons();
         _statusText.Text = $"Add tile mode enabled (hash {_paintLandHash}). Drag on tiles to paint.";
     }
 
     private void DeleteLandButtonOnClick(object? sender, RoutedEventArgs e)
     {
+        ResetMoveTileSession();
         _mapCanvas.EditMode = MapEditMode.DeleteLand;
+        _mapCanvas.SetExternalRectSelectionMode(false);
+        _mapCanvas.ClearExternalRectSelection();
         UpdateEditModeButtons();
         _statusText.Text = $"Delete tiles mode enabled (hash {_waterHash}). Drag on tiles to erase.";
+    }
+
+    private void FillLandButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        ResetMoveTileSession();
+        _mapCanvas.EditMode = MapEditMode.FillLand;
+        _mapCanvas.SetExternalRectSelectionMode(false);
+        _mapCanvas.ClearExternalRectSelection();
+        UpdateEditModeButtons();
+        _statusText.Text = $"Fill mode enabled (hash {_paintLandHash}). Click a tile to flood fill connected tiles.";
+    }
+
+    private void MoveTileButtonOnClick(object? sender, RoutedEventArgs e)
+    {
+        ResetMoveTileSession();
+        _mapCanvas.EditMode = MapEditMode.MoveTile;
+        _mapCanvas.ClearExternalRectSelection();
+        _mapCanvas.SetExternalRectSelectionMode(true);
+        UpdateEditModeButtons();
+        _statusText.Text = "Move tile mode enabled. Drag to select tiles, then press arrow keys to move.";
+    }
+
+    private void MoveSelectedTileRect(int dx, int dy)
+    {
+        var map = _currentMap;
+        if (map is null)
+        {
+            _statusText.Text = "Load a map first.";
+            return;
+        }
+
+        if (dx == 0 && dy == 0)
+        {
+            return;
+        }
+
+        if (!_mapCanvas.TryGetExternalRect(out var minX, out var maxX, out var minY, out var maxY))
+        {
+            _statusText.Text = "Select tiles first (drag in move tile mode).";
+            return;
+        }
+
+        var width = map.Width;
+        var targetMinX = minX + dx;
+        var targetMaxX = maxX + dx;
+        var height = map.Height;
+        var targetMinY = minY + dy;
+        var targetMaxY = maxY + dy;
+        if (targetMinX < 0 || targetMaxX >= width || targetMinY < 0 || targetMaxY >= height)
+        {
+            _statusText.Text = "Move blocked by map bounds.";
+            return;
+        }
+        if (!EnsureMoveTileSession(map, minX, maxX, minY, maxY))
+        {
+            _statusText.Text = "Could not initialize move tile session.";
+            return;
+        }
+
+        var snapshot = CaptureSnapshot(map);
+        if (!_suppressHistory)
+        {
+            PushUndoSnapshot(snapshot);
+        }
+
+        if (!ApplyMoveTileComposition(map, targetMinX, targetMaxX, targetMinY, targetMaxY, out var movedTiles, out var movedObjects))
+        {
+            _statusText.Text = "Could not move selected tiles.";
+            return;
+        }
+
+        _suppressMoveTileSelectionChange = true;
+        _mapCanvas.ShiftExternalRectBy(dx, dy);
+        _suppressMoveTileSelectionChange = false;
+        BuildTileColorMap(map);
+        _mapCanvas.SetTileColorMap(_tileColorByHash);
+        RefreshFloorLegend(map);
+        RefreshPaintTileTypeOptions(map);
+        RefreshObjectList(map, -1);
+        _mapCanvas.InvalidateVisual();
+
+        var dir = dx < 0 ? "left" : dx > 0 ? "right" : dy < 0 ? "up" : "down";
+        _statusText.Text = $"Moved selected tiles {dir} by 1. Tiles moved: {movedTiles}, objects moved: {movedObjects}.";
+    }
+
+    private void ResetMoveTileSession()
+    {
+        _moveTileSessionReady = false;
+        _moveTileBaseSnapshot = null;
+        _moveTilePayloadGrid = null;
+        _moveTilePayloadObjects = [];
+        _moveTileOriginMinX = -1;
+        _moveTileOriginMaxX = -1;
+        _moveTileOriginMinY = -1;
+        _moveTileOriginMaxY = -1;
+    }
+
+    private bool EnsureMoveTileSession(MapProject map, int minX, int maxX, int minY, int maxY)
+    {
+        if (_moveTileSessionReady)
+        {
+            return true;
+        }
+
+        if (minX < 0 || maxX < minX || minY < 0 || maxY < minY)
+        {
+            return false;
+        }
+
+        var width = maxX - minX + 1;
+        var height = maxY - minY + 1;
+        var snapshot = CaptureSnapshot(map);
+        var payloadGrid = new uint[width, height];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                payloadGrid[x, y] = snapshot.Grid[minX + x, minY + y];
+            }
+        }
+
+        var payloadObjects = snapshot.Objects
+            .Where(o => o.GridPosX >= minX && o.GridPosX <= maxX && o.GridPosY >= minY && o.GridPosY <= maxY)
+            .Select(o => new MoveTileObjectPayload
+            {
+                Object = CloneObject(o),
+                OffsetX = o.GridPosX - minX,
+                OffsetY = o.GridPosY - minY
+            })
+            .ToList();
+
+        _moveTileBaseSnapshot = snapshot;
+        _moveTilePayloadGrid = payloadGrid;
+        _moveTilePayloadObjects = payloadObjects;
+        _moveTileOriginMinX = minX;
+        _moveTileOriginMaxX = maxX;
+        _moveTileOriginMinY = minY;
+        _moveTileOriginMaxY = maxY;
+        _moveTileSessionReady = true;
+        return true;
+    }
+
+    private bool ApplyMoveTileComposition(MapProject map, int minX, int maxX, int minY, int maxY, out int movedTiles, out int movedObjects)
+    {
+        movedTiles = 0;
+        movedObjects = 0;
+        if (!_moveTileSessionReady || _moveTileBaseSnapshot is null || _moveTilePayloadGrid is null)
+        {
+            return false;
+        }
+
+        var width = maxX - minX + 1;
+        var height = maxY - minY + 1;
+        if (width <= 0 || height <= 0 || _moveTilePayloadGrid.GetLength(0) != width || _moveTilePayloadGrid.GetLength(1) != height)
+        {
+            return false;
+        }
+
+        var composedGrid = (uint[,])_moveTileBaseSnapshot.Grid.Clone();
+        for (var y = _moveTileOriginMinY; y <= _moveTileOriginMaxY; y++)
+        {
+            for (var x = _moveTileOriginMinX; x <= _moveTileOriginMaxX; x++)
+            {
+                composedGrid[x, y] = _waterHash;
+            }
+        }
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                composedGrid[minX + x, minY + y] = _moveTilePayloadGrid[x, y];
+                movedTiles++;
+            }
+        }
+
+        var composedObjects = _moveTileBaseSnapshot.Objects
+            .Select(CloneObject)
+            .Where(o =>
+                !(o.GridPosX >= _moveTileOriginMinX && o.GridPosX <= _moveTileOriginMaxX && o.GridPosY >= _moveTileOriginMinY && o.GridPosY <= _moveTileOriginMaxY) &&
+                !(o.GridPosX >= minX && o.GridPosX <= maxX && o.GridPosY >= minY && o.GridPosY <= maxY))
+            .ToList();
+
+        foreach (var payload in _moveTilePayloadObjects)
+        {
+            var moved = CloneObject(payload.Object);
+            moved.GridPosX = minX + payload.OffsetX;
+            moved.GridPosY = minY + payload.OffsetY;
+            composedObjects.Add(moved);
+            movedObjects++;
+        }
+
+        map.Grid = composedGrid;
+        map.Objects = composedObjects;
+        return true;
     }
 
     private void UpdateEditModeButtons()
@@ -3198,6 +3521,17 @@ public partial class MainWindow : Window
         ApplyModeButtonStyle(_moveObjectsButton, _mapCanvas.EditMode == MapEditMode.MoveObjects);
         ApplyModeButtonStyle(_addLandButton, _mapCanvas.EditMode == MapEditMode.AddLand);
         ApplyModeButtonStyle(_deleteLandButton, _mapCanvas.EditMode == MapEditMode.DeleteLand);
+        ApplyModeButtonStyle(_fillLandButton, _mapCanvas.EditMode == MapEditMode.FillLand);
+        ApplyModeButtonStyle(_moveTileButton, _mapCanvas.EditMode == MapEditMode.MoveTile);
+        _editModeTitleText.Text = _mapCanvas.EditMode switch
+        {
+            MapEditMode.MoveObjects => "Move Object",
+            MapEditMode.AddLand => "Add Tile",
+            MapEditMode.DeleteLand => "Delete Tile",
+            MapEditMode.FillLand => "Fill Tile",
+            MapEditMode.MoveTile => "Move Tile",
+            _ => "Edit Mode"
+        };
     }
 
     private static void ApplyModeButtonStyle(Button button, bool isActive)
@@ -3881,6 +4215,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        ResetMoveTileSession();
         var current = CaptureSnapshot(_currentMap);
         var previous = _undoStack.Pop();
         _redoStack.Push(current);
@@ -3896,6 +4231,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        ResetMoveTileSession();
         var current = CaptureSnapshot(_currentMap);
         var next = _redoStack.Pop();
         _undoStack.Push(current);
@@ -4097,6 +4433,10 @@ public partial class MainWindow : Window
         if (_mapCanvas.EditMode == MapEditMode.AddLand)
         {
             _statusText.Text = $"Add tile mode enabled (hash {_paintLandHash}). Drag on tiles to paint.";
+        }
+        else if (_mapCanvas.EditMode == MapEditMode.FillLand)
+        {
+            _statusText.Text = $"Fill mode enabled (hash {_paintLandHash}). Click a tile to flood fill connected tiles.";
         }
     }
 
