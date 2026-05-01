@@ -8,6 +8,96 @@ namespace MapIslandEditor.Services;
 
 public sealed class MapRepository
 {
+    private static readonly (uint Hash, string Name)[] BuiltInActorNames =
+    [
+        (0x1f1eb32d, "FacilityFamilyRestaurant"),
+        (0x22f85aa9, "FacilityItemShop"),
+        (0x4499cc8c, "FacilityPhotoStudio"),
+        (0x4e992963, "FacilityTower"),
+        (0x4f2a4a2c, "FacilityMarket"),
+        (0x639739e4, "FacilitySupermarket"),
+        (0x6400ef93, "FacilityInteriorShop"),
+        (0x738bd7a2, "FacilityFerrisWheel"),
+        (0x779b5f66, "FacilityFountainPark"),
+        (0x7cb5537a, "FacilityFountain"),
+        (0x7ff35b85, "FacilityClothShop"),
+        (0xb3f08ea7, "FacilityAtelier"),
+        (0xb5d0afa9, "FacilityPark"),
+        (0xcb84668f, "FacilityBuildingShop"),
+        (0xf003e9c0, "FacilityPawnShop"),
+        (0xe3ec5c38, "HouseDollHouse"),
+        (0xef367ada, "HouseOneRoom"),
+        (0x2664f7d1, "ObjTreePalm"),
+        (0x4cdf13e3, "ObjTreeCactus"),
+        (0x70ccf14b, "ObjTreeCherry"),
+        (0x0da9f2cc, "ObjTreeGinkgo"),
+        (0x00f79623, "ObjTreeBroadleaf"),
+        (0x9818108c, "ObjTreeConiferous"),
+        (0x30ebfc39, "ObjSafetyCone"),
+        (0x8d1d2c86, "ObjDrinkingFountain"),
+        (0xd3442cf3, "ObjSprinkler"),
+        (0x1d43382b, "ObjRoadSign"),
+        (0x623f9384, "ObjSignboardTutorial"),
+        (0xf4fac611, "ObjSignboardTutorial_01"),
+        (0x8653643d, "ObjSignboardTutorial_02"),
+        (0x0daa36aa, "ObjSignboardTutorial_03"),
+        (0x0a29f456, "ObjSignboardTutorial_04"),
+        (0x644e5834, "ObjTrafficLight"),
+        (0x1b96fc41, "ObjStreetLamp"),
+        (0xf57069ca, "ObjStreetLampRetro"),
+        (0xa5e069e0, "ObjArchAir"),
+        (0xa82d0000, "ObjArchAir_Unknown"),
+        (0xf4b09c49, "ObjClockTower"),
+        (0xdd0b050b, "ObjThrone"),
+        (0xc9213dbd, "ObjBonfire"),
+        (0xc9e023ef, "ObjSeesaw"),
+        (0x821c5664, "ObjSwingRider"),
+        (0xeab6c014, "ObjPinwheel"),
+        (0xab8d53d0, "ObjLighthouse"),
+        (0x8d42df09, "ObjShowerOutdoor"),
+        (0x5e8fc05f, "ObjTrashCan"),
+        (0xbc586477, "ObjFlowerpot"),
+        (0x48e1e211, "ObjHedge"),
+        (0xef9a1dc1, "ObjFenceLattice"),
+        (0xf27eda3f, "ObjFenceWood"),
+        (0xf6ec924d, "ObjFenceChain_01"),
+        (0xe3e5250b, "ObjFenceChain"),
+        (0xf5a8c105, "ObjFenceIron"),
+        (0x9296757d, "ObjFenceBarbed"),
+        (0xda9ced52, "ObjFenceStake"),
+        (0xc6cfb515, "ObjFencePipe"),
+        (0xfeb03bcb, "ObjGuardrail"),
+        (0x39bb7d36, "ObjFenceGuardpipe"),
+        (0x74118a38, "ObjBell"),
+        (0x80273dca, "ObjTreeElectric"),
+        (0x69f07ec5, "ObjRock"),
+        (0x77b633dd, "ObjWeed"),
+        (0x80c4e173, "ObjFlowerTulip"),
+        (0xc28ce29d, "ObjFlowerNarcissus"),
+        (0xa4552121, "ObjFlowerAnemone_01"),
+        (0xe21c58eb, "ObjFlowerNemophila"),
+        (0x7ab365bb, "ObjFlowerLavender"),
+        (0x9cb9f35b, "ObjFlowerCosmos_01"),
+        (0x28895d61, "ObjFlowerPampasGrass"),
+        (0xe828641c, "ObjFlowerSunflowers"),
+        (0x57c2b90a, "ObjBench"),
+        (0x3a379430, "ObjBenchPark"),
+        (0x5468ea41, "ObjBenchTerrace"),
+        (0x2d70949a, "ObjBenchHome"),
+        (0x94046edf, "ObjTableBench"),
+        (0x36147dc4, "ObjBeachBed"),
+        (0xf082e4ca, "ObjBeachParasol"),
+        (0x1e7795a7, "ObjVendingMachine"),
+        (0x41436cba, "ObjFireworksErupting"),
+        (0x72eb0d7a, "ObjFireworksAerial"),
+        (0x1a1f3c2e, "ObjSnowman"),
+        (0xbec21d16, "ObjLantern"),
+        (0x94a2b14c, "ObjLanternSakura"),
+        (0x1eb0ff5c, "ObjJackOLantern"),
+        (0x77d02094, "ObjStepIron"),
+        (0xf29bd6d8, "ObjStepStone"),
+        (0x16905ce1, "ObjStepWood")
+    ];
     private readonly string _rootPath;
     private readonly string _mapPath;
 
@@ -51,39 +141,45 @@ public sealed class MapRepository
 
         if (File.Exists(analysisPath))
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(analysisPath));
-            if (doc.RootElement.TryGetProperty("objectHashLookup", out var objectLookup) && objectLookup.ValueKind == JsonValueKind.Object)
+            try
             {
-                foreach (var property in objectLookup.EnumerateObject())
+                using var doc = JsonDocument.Parse(File.ReadAllText(analysisPath));
+                if (doc.RootElement.TryGetProperty("objectHashLookup", out var objectLookup) && objectLookup.ValueKind == JsonValueKind.Object)
                 {
-                    if (!uint.TryParse(property.Name, out var hash))
+                    foreach (var property in objectLookup.EnumerateObject())
                     {
-                        continue;
-                    }
-
-                    if (property.Value.ValueKind != JsonValueKind.Array)
-                    {
-                        continue;
-                    }
-
-                    var names = new List<string>();
-                    foreach (var n in property.Value.EnumerateArray())
-                    {
-                        if (n.ValueKind == JsonValueKind.String)
+                        if (!uint.TryParse(property.Name, out var hash))
                         {
-                            var value = n.GetString();
-                            if (!string.IsNullOrWhiteSpace(value))
+                            continue;
+                        }
+
+                        if (property.Value.ValueKind != JsonValueKind.Array)
+                        {
+                            continue;
+                        }
+
+                        var names = new List<string>();
+                        foreach (var n in property.Value.EnumerateArray())
+                        {
+                            if (n.ValueKind == JsonValueKind.String)
                             {
-                                names.Add(value);
+                                var value = n.GetString();
+                                if (!string.IsNullOrWhiteSpace(value))
+                                {
+                                    names.Add(value);
+                                }
                             }
                         }
-                    }
 
-                    if (names.Count > 0)
-                    {
-                        lookup[hash] = names.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+                        if (names.Count > 0)
+                        {
+                            lookup[hash] = names.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+                        }
                     }
-                }    
+                }
+            }
+            catch
+            {
             }
         }
 
@@ -424,40 +520,28 @@ public sealed class MapRepository
 
     private Dictionary<uint, List<string>> BuildActorHashLookup()
     {
-        var result = new Dictionary<uint, List<string>>();
-        var actorDir = Path.Combine(_rootPath, "Actor");
-        if (!Directory.Exists(actorDir))
-        {
-            return result;
-        }
+        return GetBuiltInActorNameLookup();
+    }
 
-        var files = Directory.GetFiles(actorDir, "*.actor__ActorParam.gyml", SearchOption.TopDirectoryOnly);
-        foreach (var file in files)
+    public static Dictionary<uint, List<string>> GetBuiltInActorNameLookup()
+    {
+        var result = new Dictionary<uint, List<string>>();
+        foreach (var (hash, key) in BuiltInActorNames)
         {
-            var name = Path.GetFileName(file);
-            var token = name.Replace(".actor__ActorParam.gyml", string.Empty, StringComparison.OrdinalIgnoreCase);
-            if (string.IsNullOrWhiteSpace(token))
+            if (string.IsNullOrWhiteSpace(key))
             {
                 continue;
             }
 
-            var baseToken = token;
-            var lastUnderscore = token.LastIndexOf('_');
-            if (lastUnderscore > 0 && int.TryParse(token[(lastUnderscore + 1)..], out _))
+            if (!result.TryGetValue(hash, out var names))
             {
-                baseToken = token[..lastUnderscore];
+                names = [];
+                result[hash] = names;
             }
 
-            var hash = MurmurHash3X86_32(baseToken);
-            if (!result.TryGetValue(hash, out var list))
+            if (!names.Any(s => s.Equals(key, StringComparison.OrdinalIgnoreCase)))
             {
-                list = [];
-                result[hash] = list;
-            }
-
-            if (!list.Any(s => s.Equals(baseToken, StringComparison.OrdinalIgnoreCase)))
-            {
-                list.Add(baseToken);
+                names.Add(key);
             }
         }
 
@@ -675,4 +759,5 @@ public sealed class MapRepository
 
         return token;
     }
+
 }

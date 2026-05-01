@@ -11,7 +11,9 @@ public enum MapEditMode
 {
     MoveObjects,
     AddLand,
-    DeleteLand
+    DeleteLand,
+    FillLand,
+    MoveTile
 }
 
 public sealed class MapCanvasControl : Control
@@ -60,6 +62,7 @@ public sealed class MapCanvasControl : Control
     private double _panX;
     private double _panY;
     private double _zoom = 1;
+    private bool _showObjects = true;
     private int _selectedObjectIndex = -1;
     private Point _hoverPointer;
     private bool _hasHoverPointer;
@@ -95,6 +98,21 @@ public sealed class MapCanvasControl : Control
         set
         {
             _selectedObjectIndex = value;
+            InvalidateVisual();
+        }
+    }
+
+    public bool ShowObjects
+    {
+        get => _showObjects;
+        set
+        {
+            if (_showObjects == value)
+            {
+                return;
+            }
+
+            _showObjects = value;
             InvalidateVisual();
         }
     }
@@ -180,6 +198,31 @@ public sealed class MapCanvasControl : Control
         maxX = Math.Max(_externalRectStartX, _externalRectEndX);
         minY = Math.Min(_externalRectStartY, _externalRectEndY);
         maxY = Math.Max(_externalRectStartY, _externalRectEndY);
+        return true;
+    }
+
+    public bool ShiftExternalRectBy(int dx, int dy)
+    {
+        if (_map is null || !_externalRectHasSelection || _externalRectStartX < 0 || _externalRectStartY < 0 || _externalRectEndX < 0 || _externalRectEndY < 0)
+        {
+            return false;
+        }
+
+        var startX = _externalRectStartX + dx;
+        var endX = _externalRectEndX + dx;
+        var startY = _externalRectStartY + dy;
+        var endY = _externalRectEndY + dy;
+        if (startX < 0 || endX < 0 || startY < 0 || endY < 0 || startX >= _map.Width || endX >= _map.Width || startY >= _map.Height || endY >= _map.Height)
+        {
+            return false;
+        }
+
+        _externalRectStartX = startX;
+        _externalRectEndX = endX;
+        _externalRectStartY = startY;
+        _externalRectEndY = endY;
+        ExternalRectSelectionChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
         return true;
     }
 
@@ -286,6 +329,23 @@ public sealed class MapCanvasControl : Control
             }
 
             e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
+        }
+
+        if (isLeft && EditMode == MapEditMode.FillLand)
+        {
+            TilePaintStrokeStarted?.Invoke(this, EventArgs.Empty);
+            if (TryFillTileAtPoint(_lastPointer))
+            {
+                TilePainted?.Invoke(this, EventArgs.Empty);
+            }
+            TilePaintStrokeCompleted?.Invoke(this, EventArgs.Empty);
+            _pointerDown = false;
+            _draggingObject = false;
+            _paintingTiles = false;
+            _tileRectSelecting = false;
+            InvalidateVisual();
             e.Handled = true;
             return;
         }
@@ -541,7 +601,7 @@ public sealed class MapCanvasControl : Control
 
     private void RenderObjects(DrawingContext context)
     {
-        if (_map is null)
+        if (_map is null || !_showObjects)
         {
             return;
         }
@@ -692,7 +752,7 @@ public sealed class MapCanvasControl : Control
 
     private int HitTestObject(Point point)
     {
-        if (_map is null)
+        if (_map is null || !_showObjects)
         {
             return -1;
         }
@@ -786,6 +846,59 @@ public sealed class MapCanvasControl : Control
         return changed;
     }
 
+    private bool TryFillTileAtPoint(Point point)
+    {
+        if (_map is null || !TryGetGridAtPoint(point, out var startX, out var startY))
+        {
+            return false;
+        }
+
+        var target = _landHash;
+        var source = _map.Grid[startX, startY];
+        if (source == target)
+        {
+            return false;
+        }
+
+        var queue = new Queue<(int X, int Y)>();
+        queue.Enqueue((startX, startY));
+        var changed = false;
+
+        while (queue.Count > 0)
+        {
+            var (x, y) = queue.Dequeue();
+            if (_map.Grid[x, y] != source)
+            {
+                continue;
+            }
+
+            _map.Grid[x, y] = target;
+            changed = true;
+
+            if (x > 0 && _map.Grid[x - 1, y] == source)
+            {
+                queue.Enqueue((x - 1, y));
+            }
+
+            if (x + 1 < _map.Width && _map.Grid[x + 1, y] == source)
+            {
+                queue.Enqueue((x + 1, y));
+            }
+
+            if (y > 0 && _map.Grid[x, y - 1] == source)
+            {
+                queue.Enqueue((x, y - 1));
+            }
+
+            if (y + 1 < _map.Height && _map.Grid[x, y + 1] == source)
+            {
+                queue.Enqueue((x, y + 1));
+            }
+        }
+
+        return changed;
+    }
+
     private bool TryGetGridAtPoint(Point point, out int gx, out int gy)
     {
         gx = -1;
@@ -873,9 +986,9 @@ public sealed class MapCanvasControl : Control
             }
         }
 
-        if (EditMode is MapEditMode.AddLand or MapEditMode.DeleteLand)
+        if (EditMode is MapEditMode.AddLand or MapEditMode.DeleteLand or MapEditMode.FillLand)
         {
-            if (_tileRectSelecting && _tileRectStartX >= 0 && _tileRectStartY >= 0 && _tileRectEndX >= 0 && _tileRectEndY >= 0)
+            if (EditMode != MapEditMode.FillLand && _tileRectSelecting && _tileRectStartX >= 0 && _tileRectStartY >= 0 && _tileRectEndX >= 0 && _tileRectEndY >= 0)
             {
                 var minX = Math.Min(_tileRectStartX, _tileRectEndX);
                 var maxX = Math.Max(_tileRectStartX, _tileRectEndX);
@@ -894,8 +1007,10 @@ public sealed class MapCanvasControl : Control
             var radius = Math.Max(8, BaseCellSize * _zoom * 0.8);
             var fill = EditMode == MapEditMode.AddLand
                 ? new SolidColorBrush(Color.Parse("#6600C853"))
-                : new SolidColorBrush(Color.Parse("#66D50000"));
-            var symbol = EditMode == MapEditMode.AddLand ? "+" : "-";
+                : EditMode == MapEditMode.DeleteLand
+                    ? new SolidColorBrush(Color.Parse("#66D50000"))
+                    : new SolidColorBrush(Color.Parse("#664FC3F7"));
+            var symbol = EditMode == MapEditMode.AddLand ? "+" : EditMode == MapEditMode.DeleteLand ? "-" : "F";
             var text = new FormattedText(
                 symbol,
                 CultureInfo.InvariantCulture,
@@ -1038,6 +1153,7 @@ public sealed class MapCanvasControl : Control
         {
             MapEditMode.AddLand => new Cursor(StandardCursorType.None),
             MapEditMode.DeleteLand => new Cursor(StandardCursorType.None),
+            MapEditMode.FillLand => new Cursor(StandardCursorType.None),
             _ => new Cursor(StandardCursorType.Arrow)
         };
     }
