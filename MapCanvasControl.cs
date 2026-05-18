@@ -18,6 +18,34 @@ public enum MapEditMode
 
 public sealed class MapCanvasControl : Control
 {
+    private readonly record struct ObjectFootprint(int X0, int Y0, int W, int H);
+
+    private static readonly Dictionary<uint, ObjectFootprint> KnownActorFootprints = new()
+    {
+        [0x1f1eb32d] = new ObjectFootprint(-2, -2, 6, 5),
+        [0x22f85aa9] = new ObjectFootprint(-1, -1, 4, 4),
+        [0x4499cc8c] = new ObjectFootprint(-1, -1, 4, 4),
+        [0x4e992963] = new ObjectFootprint(-1, -1, 4, 4),
+        [0x4f2a4a2c] = new ObjectFootprint(-1, -1, 3, 3),
+        [0x639739e4] = new ObjectFootprint(-1, -1, 4, 4),
+        [0x6400ef93] = new ObjectFootprint(-1, -1, 4, 4),
+        [0x738bd7a2] = new ObjectFootprint(-4, -2, 9, 5),
+        [0x779b5f66] = new ObjectFootprint(-2, -4, 6, 10),
+        [0x7cb5537a] = new ObjectFootprint(0, 0, 4, 3),
+        [0x7ff35b85] = new ObjectFootprint(-1, -1, 4, 4),
+        [0xb3f08ea7] = new ObjectFootprint(-1, -1, 4, 4),
+        [0xb5d0afa9] = new ObjectFootprint(0, 0, 6, 10),
+        [0xcb84668f] = new ObjectFootprint(-1, -1, 4, 4),
+        [0xe3ec5c38] = new ObjectFootprint(-2, -1, 6, 4),
+        [0xef367ada] = new ObjectFootprint(-1, -1, 3, 4),
+        [0xf003e9c0] = new ObjectFootprint(-1, -1, 4, 4),
+        [0x623f9384] = new ObjectFootprint(0, 0, 4, 5),
+        [0xf4fac611] = new ObjectFootprint(0, 0, 4, 5),
+        [0x8653643d] = new ObjectFootprint(0, 0, 4, 5),
+        [0x0daa36aa] = new ObjectFootprint(0, 0, 4, 5),
+        [0x0a29f456] = new ObjectFootprint(0, 0, 4, 5)
+    };
+
     private const double BaseCellSize = 8.0;
     private const double MinZoom = 0.08;
     private const double MaxZoom = 16.0;
@@ -26,7 +54,7 @@ public sealed class MapCanvasControl : Control
     private readonly SolidColorBrush _tileBorderBrush = new(Color.Parse("#1f2a36"));
     private readonly SolidColorBrush _iconTextBrush = new(Color.Parse("#101010"));
     private readonly SolidColorBrush _objectStrokeBrush = new(Color.Parse("#20150a"));
-    private readonly SolidColorBrush _objectFillBrush = new(Color.Parse("#ff8b3d"));
+    private readonly SolidColorBrush _objectFillBrush = new(Color.Parse("#66ff8b3d"));
     private readonly Pen _tileBorderPen;
     private readonly Pen _objectStrokePen;
     private readonly Pen _selectedObjectPen;
@@ -36,6 +64,7 @@ public sealed class MapCanvasControl : Control
     private readonly Pen _coordAxisPen;
     private readonly SolidColorBrush _coordTextBrush;
     private readonly Typeface _typeface = new("Segoe UI");
+    private readonly Typeface _emojiTypeface = new("Segoe UI Emoji");
 
     private MapProject? _map;
     private Func<uint, string>? _nameResolver;
@@ -387,7 +416,6 @@ public sealed class MapCanvasControl : Control
                 _dragStartX = _map.Objects[_dragObjectIndex].GridPosX;
                 _dragStartY = _map.Objects[_dragObjectIndex].GridPosY;
             }
-            TrySnapObjectToPoint(_dragObjectIndex, _lastPointer);
             InvalidateVisual();
             e.Pointer.Capture(this);
             e.Handled = true;
@@ -576,7 +604,6 @@ public sealed class MapCanvasControl : Control
         var halfHeight = _map.Height * 0.5;
         var worldCell = BaseCellSize * effectiveStep;
         var drawSize = Math.Max(1, worldCell * _zoom);
-        var halfDraw = drawSize * 0.5;
         var drawBorder = drawSize >= 6;
         GetVisibleGridBounds(_map, out var minX, out var maxX, out var minY, out var maxY);
         minX = AlignDownToStep(minX, effectiveStep);
@@ -588,8 +615,8 @@ public sealed class MapCanvasControl : Control
             {
                 var hash = _map.Grid[x, y];
                 var brush = GetTileBrush(hash);
-                var p = WorldToScreen((x - halfWidth) * BaseCellSize, (y - halfHeight) * BaseCellSize);
-                var rect = new Rect(p.X - halfDraw, p.Y - halfDraw, drawSize, drawSize);
+                var leftTop = WorldToScreen((x - halfWidth - 0.5) * BaseCellSize, (y - halfHeight - 0.5) * BaseCellSize);
+                var rect = new Rect(leftTop.X, leftTop.Y, drawSize, drawSize);
                 context.DrawRectangle(brush, null, rect);
                 if (drawBorder)
                 {
@@ -606,41 +633,35 @@ public sealed class MapCanvasControl : Control
             return;
         }
 
-        var halfWidth = _map.Width * 0.5;
-        var halfHeight = _map.Height * 0.5;
-        var diameter = Math.Max(6, BaseCellSize * _zoom * 0.9);
-        var radius = diameter * 0.5;
-
         for (var i = 0; i < _map.Objects.Count; i++)
         {
             var obj = _map.Objects[i];
-            var px = (obj.GridPosX - halfWidth) * BaseCellSize;
-            var pz = (obj.GridPosY - halfHeight) * BaseCellSize;
-            var p = WorldToScreen(px, pz);
-            var rect = new Rect(p.X - radius, p.Y - radius, diameter, diameter);
-
-            context.DrawEllipse(_objectFillBrush, _objectStrokePen, rect.Center, radius, radius);
+            var name = _nameResolver?.Invoke(obj.Hash) ?? "(unknown)";
+            var footprint = GetObjectFootprint(obj.Hash, name, obj.RotY);
+            var rect = GetObjectRect(obj, footprint);
+            context.DrawRectangle(_objectFillBrush, _objectStrokePen, rect);
             if (i == _selectedObjectIndex)
             {
-                context.DrawEllipse(null, _selectedObjectPen, rect.Center, radius + 2, radius + 2);
+                context.DrawRectangle(null, _selectedObjectPen, rect.Inflate(2));
                 if (EditMode == MapEditMode.MoveObjects)
                 {
-                    var arm = radius + Math.Max(7, _zoom * 3);
+                    var p = rect.Center;
+                    var arm = Math.Max(7, Math.Max(rect.Width, rect.Height) * 0.35);
                     context.DrawLine(_moveGizmoPen, new Point(p.X - arm, p.Y), new Point(p.X + arm, p.Y));
                     context.DrawLine(_moveGizmoPen, new Point(p.X, p.Y - arm), new Point(p.X, p.Y + arm));
                 }
             }
 
-            var label = GetObjectIcon(_nameResolver?.Invoke(obj.Hash) ?? "(unknown)");
+            var label = GetObjectIcon(name);
             var text = new FormattedText(
                 label,
                 CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight,
-                _typeface,
-                Math.Max(10, radius * 1.05),
+                _emojiTypeface,
+                Math.Max(10, Math.Min(rect.Width, rect.Height) * 0.52),
                 _iconTextBrush);
 
-            context.DrawText(text, new Point(p.X - text.Width * 0.5, p.Y - text.Height * 0.5));
+            context.DrawText(text, new Point(rect.Center.X - text.Width * 0.5, rect.Center.Y - text.Height * 0.5));
         }
     }
 
@@ -757,24 +778,41 @@ public sealed class MapCanvasControl : Control
             return -1;
         }
 
-        var halfWidth = _map.Width * 0.5;
-        var halfHeight = _map.Height * 0.5;
-        var radius = Math.Max(6, BaseCellSize * _zoom * 0.45);
-        var r2 = radius * radius;
-
         for (var i = _map.Objects.Count - 1; i >= 0; i--)
         {
             var obj = _map.Objects[i];
-            var p = WorldToScreen((obj.GridPosX - halfWidth) * BaseCellSize, (obj.GridPosY - halfHeight) * BaseCellSize);
-            var dx = point.X - p.X;
-            var dy = point.Y - p.Y;
-            if (dx * dx + dy * dy <= r2)
+            var name = _nameResolver?.Invoke(obj.Hash) ?? "(unknown)";
+            var footprint = GetObjectFootprint(obj.Hash, name, obj.RotY);
+            var rect = GetObjectRect(obj, footprint);
+            if (rect.Contains(point))
             {
                 return i;
             }
         }
 
         return -1;
+    }
+
+    private Rect GetObjectRect(MapObjectEntry obj, ObjectFootprint footprint)
+    {
+        if (_map is null)
+        {
+            return new Rect();
+        }
+
+        var halfMapWidth = _map.Width * 0.5;
+        var halfMapHeight = _map.Height * 0.5;
+        var leftWorld = (obj.GridPosX + footprint.X0 - halfMapWidth - 0.5) * BaseCellSize;
+        var rightWorld = leftWorld + (footprint.W * BaseCellSize);
+        var topWorld = (obj.GridPosY + footprint.Y0 - halfMapHeight - 0.5) * BaseCellSize;
+        var bottomWorld = topWorld + (footprint.H * BaseCellSize);
+        var topLeft = WorldToScreen(leftWorld, topWorld);
+        var bottomRight = WorldToScreen(rightWorld, bottomWorld);
+        var left = Math.Min(topLeft.X, bottomRight.X);
+        var top = Math.Min(topLeft.Y, bottomRight.Y);
+        var right = Math.Max(topLeft.X, bottomRight.X);
+        var bottom = Math.Max(topLeft.Y, bottomRight.Y);
+        return new Rect(new Point(left, top), new Point(right, bottom));
     }
 
     private void TrySnapObjectToPoint(int objectIndex, Point point)
@@ -1166,34 +1204,160 @@ public sealed class MapCanvasControl : Control
         return $"#{r:X2}{g:X2}{b:X2}";
     }
 
+    private static ObjectFootprint GetObjectFootprint(uint hash, string name, float rotY)
+    {
+        if (KnownActorFootprints.TryGetValue(hash, out var exact))
+        {
+            return RotateFootprint(exact, rotY);
+        }
+
+        return RotateFootprint(GetFallbackFootprint(name), rotY);
+    }
+
+    private static ObjectFootprint GetFallbackFootprint(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name == "(unknown)")
+        {
+            return new ObjectFootprint(0, 0, 1, 1);
+        }
+
+        var n = name.ToLowerInvariant();
+        if (n.Contains("facility") || n.Contains("building") || n.Contains("shop"))
+        {
+            return new ObjectFootprint(-1, -1, 4, 4);
+        }
+
+        if (n.Contains("house"))
+        {
+            return new ObjectFootprint(-1, -1, 3, 4);
+        }
+
+        if (n.Contains("signboardtutorial"))
+        {
+            return new ObjectFootprint(0, 0, 4, 5);
+        }
+
+        if (n.Contains("tree") || n.Contains("palm") || n.Contains("rock") || n.Contains("cactus"))
+        {
+            return new ObjectFootprint(0, 0, 1, 1);
+        }
+
+        if (n.Contains("bench") || n.Contains("table") || n.Contains("fence") || n.Contains("guardrail") || n.Contains("hedge") || n.Contains("step"))
+        {
+            return new ObjectFootprint(0, 0, 2, 1);
+        }
+
+        return new ObjectFootprint(0, 0, 1, 1);
+    }
+
+    private static ObjectFootprint RotateFootprint(ObjectFootprint footprint, float rotY)
+    {
+        var turns = GetQuarterTurns(rotY);
+        if (turns == 0)
+        {
+            return footprint;
+        }
+
+        var x1 = footprint.X0 + footprint.W - 1;
+        var y1 = footprint.Y0 + footprint.H - 1;
+        var corners = new[]
+        {
+            RotateOffset(footprint.X0, footprint.Y0, turns),
+            RotateOffset(x1, footprint.Y0, turns),
+            RotateOffset(footprint.X0, y1, turns),
+            RotateOffset(x1, y1, turns)
+        };
+
+        var minX = corners.Min(c => c.X);
+        var minY = corners.Min(c => c.Y);
+        var maxX = corners.Max(c => c.X);
+        var maxY = corners.Max(c => c.Y);
+        return new ObjectFootprint(minX, minY, maxX - minX + 1, maxY - minY + 1);
+    }
+
+    private static int GetQuarterTurns(float rotY)
+    {
+        if (!float.IsFinite(rotY))
+        {
+            return 0;
+        }
+
+        return ((int)Math.Round(rotY / 90f) % 4 + 4) % 4;
+    }
+
+    private static (int X, int Y) RotateOffset(int x, int y, int quarterTurns)
+    {
+        var nx = x;
+        var ny = y;
+        for (var i = 0; i < quarterTurns; i++)
+        {
+            var rx = ny;
+            var ry = -nx;
+            nx = rx;
+            ny = ry;
+        }
+
+        return (nx, ny);
+    }
+
     private static string GetObjectIcon(string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name == "(unknown)")
         {
-            return "?";
+            return "❓";
         }
 
         var n = name.ToLowerInvariant();
         if (n.Contains("tree") || n.Contains("palm"))
         {
-            return "T";
+            return "🌳";
         }
 
         if (n.Contains("rock") || n.Contains("stone"))
         {
-            return "R";
+            return "🪨";
         }
 
         if (n.Contains("weed") || n.Contains("grass") || n.Contains("plant"))
         {
-            return "W";
+            return "🌿";
         }
 
-        if (n.Contains("house") || n.Contains("building") || n.Contains("shop") || n.Contains("facility"))
+        if (n.Contains("house"))
         {
-            return "H";
+            return "🏠";
         }
 
-        return name[..1].ToUpperInvariant();
+        if (n.Contains("fountain"))
+        {
+            return "⛲";
+        }
+
+        if (n.Contains("building") || n.Contains("shop") || n.Contains("facility"))
+        {
+            return "🏢";
+        }
+
+        if (n.Contains("bench"))
+        {
+            return "🪑";
+        }
+
+        if (n.Contains("lamp") || n.Contains("lantern") || n.Contains("light"))
+        {
+            return "💡";
+        }
+
+        if (n.Contains("sign"))
+        {
+            return "🪧";
+        }
+
+        if (n.Contains("fence") || n.Contains("guardrail"))
+        {
+            return "🚧";
+        }
+
+        return "📦";
     }
 }
